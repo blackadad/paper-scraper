@@ -66,15 +66,15 @@ def test_arxiv_to_pdf():
     arxiv_id = "1703.10593"
     path = "test.pdf"
     paperscraper.arxiv_to_pdf(arxiv_id, path)
-    assert os.path.exists(path)
+    assert paperscraper.check_pdf(path)
     os.remove(path)
 
 
 def test_pmc_to_pdf():
-    pmc_id = "4122119"
+    pmc_id = "8971931"
     path = "test.pdf"
     paperscraper.pmc_to_pdf(pmc_id, path)
-    assert os.path.exists(path)
+    assert paperscraper.check_pdf(path)
     os.remove(path)
 
 
@@ -82,7 +82,15 @@ def test_doi_to_pdf():
     doi = "10.1021/acs.jctc.9b00202"
     path = "test.pdf"
     paperscraper.doi_to_pdf(doi, path)
-    assert os.path.exists(path)
+    assert paperscraper.check_pdf(path)
+    os.remove(path)
+
+
+def test_link_to_pdf():
+    link = "https://www.aclweb.org/anthology/N18-3011.pdf"
+    path = "test.pdf"
+    paperscraper.link_to_pdf(link, path)
+    assert paperscraper.check_pdf(path)
     os.remove(path)
 
 
@@ -90,3 +98,9 @@ def test_search_papers():
     query = "molecular dynamics"
     papers = paperscraper.search_papers(query, limit=1)
     assert len(papers) == 1
+
+
+def test_search_papers_offset():
+    query = "molecular dynamics"
+    papers = paperscraper.search_papers(query, limit=3, _limit=1)
+    assert len(papers) == 3

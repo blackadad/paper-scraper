@@ -4,10 +4,12 @@ import re
 import pypdf
 from requests_ratelimiter import LimiterSession
 from pybtex.bibtex import BibTeXEngine
+from .headers import get_header
 
 arxiv_session = LimiterSession(per_minute=15)
 pmc_session = LimiterSession(per_minute=15)
 scihub_session = LimiterSession(per_minute=15)
+publisher_session = LimiterSession(per_minute=15)
 
 
 def clean_upbibtex(bibtex):
@@ -66,9 +68,18 @@ def format_bibtex(bibtex, key):
 def arxiv_to_pdf(arxiv_id, path):
     url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
     # download
-    r = pmc_session.get(url, allow_redirects=True)
-    if f"No paper 'arXiv:{arxiv_id}.pdf'" in r.text:
+    r = pmc_session.get(url, allow_redirects=True, headers=get_header())
+    if r.status_code != 200 or f"No paper 'arXiv:{arxiv_id}.pdf'" in r.text:
         raise Exception(f"No paper with arxiv id {arxiv_id}")
+    with open(path, "wb") as f:
+        f.write(r.content)
+
+
+def link_to_pdf(url, path):
+    # download
+    r = publisher_session.get(url, allow_redirects=True, headers=get_header())
+    if r.status_code != 200:
+        raise Exception(f"Unable to download {url}, status code {r.status_code}")
     with open(path, "wb") as f:
         f.write(r.content)
 
@@ -76,9 +87,9 @@ def arxiv_to_pdf(arxiv_id, path):
 def pmc_to_pdf(pmc_id, path):
     url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/"
     # download
-    r = pmc_session.get(url, allow_redirects=True)
-    if "Invalid article ID" in r.text:
-        raise Exception(f"No paper with pmc id {pmc_id}")
+    r = pmc_session.get(url, allow_redirects=True, headers=get_header())
+    if r.status_code != 200 or "Invalid article ID" in r.text:
+        raise Exception(f"No paper with pmc id {pmc_id}. {url} {r.status_code}")
     with open(path, "wb") as f:
         f.write(r.content)
 
@@ -95,6 +106,8 @@ def doi_to_pdf(doi, path):
     url = f"{base}/{doi}"
     # get to iframe thing
     iframe_r = scihub_session.get(url, allow_redirects=True)
+    if iframe_r.status_code != 200:
+        raise Exception(f"No paper with doi {doi}")
     # get pdf url by regex
     # looking for button onclick
     try:
@@ -115,7 +128,9 @@ def doi_to_pdf(doi, path):
         f.write(r.content)
 
 
-def search_papers(query, limit=10, pdir=os.curdir, verbose=False):
+def search_papers(
+    query, limit=10, pdir=os.curdir, verbose=False, _paths=None, _limit=100, _offset=0
+):
     if not os.path.exists(pdir):
         os.mkdir(pdir)
     endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -132,10 +147,14 @@ def search_papers(query, limit=10, pdir=os.curdir, verbose=False):
                 "influentialCitationCount",
             ]
         ),
-        "limit": 100,
+        "limit": _limit,
+        "offset": _offset,
     }
     response = requests.get(endpoint, params=params)
-    paths = {}
+    if _paths is None:
+        paths = {}
+    else:
+        paths = _paths
     if response.status_code == 200:
         data = response.json()
         # resort based on influentialCitationCount
@@ -164,6 +183,15 @@ def search_papers(query, limit=10, pdir=os.curdir, verbose=False):
                 except Exception as e:
                     if verbose:
                         print("Failed to download pmc", e)
+            if "openAccessPdf" in paper and not success:
+                try:
+                    link_to_pdf(paper["openAccessPdf"]["url"], path)
+                    success = check_pdf(path, verbose=verbose)
+                    if verbose and success:
+                        print("Downloaded openAccessPdf")
+                except Exception as e:
+                    if verbose:
+                        print("Failed to download openAccessPdf", e)
             if "DOI" in paper["externalIds"] and not success:
                 try:
                     doi_to_pdf(paper["externalIds"]["DOI"], path)
@@ -185,5 +213,16 @@ def search_papers(query, limit=10, pdir=os.curdir, verbose=False):
                 )
                 if verbose:
                     print("Succeeded - key:", key)
-
+    if len(paths) < limit and _offset + _limit < data["total"]:
+        paths.update(
+            search_papers(
+                query,
+                limit=limit,
+                pdir=pdir,
+                verbose=verbose,
+                _paths=paths,
+                _limit=_limit,
+                _offset=_offset + _limit,
+            )
+        )
     return paths

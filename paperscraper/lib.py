@@ -8,7 +8,7 @@ from .headers import get_header
 
 arxiv_session = LimiterSession(per_minute=15)
 pmc_session = LimiterSession(per_minute=15)
-scihub_session = LimiterSession(per_minute=15)
+doi2pdf_session = LimiterSession(per_minute=15)
 publisher_session = LimiterSession(per_minute=15)
 
 
@@ -105,7 +105,7 @@ def doi_to_pdf(doi, path):
         base = base[:-1]
     url = f"{base}/{doi}"
     # get to iframe thing
-    iframe_r = scihub_session.get(url, allow_redirects=True)
+    iframe_r = doi2pdf_session.get(url, allow_redirects=True)
     if iframe_r.status_code != 200:
         raise Exception(f"No paper with doi {doi}")
     # get pdf url by regex
@@ -123,7 +123,7 @@ def doi_to_pdf(doi, path):
         pdf_url = f"{base}{pdf_url}"
     print(pdf_url)
     # download
-    r = scihub_session.get(pdf_url, allow_redirects=True)
+    r = doi2pdf_session.get(pdf_url, allow_redirects=True)
     with open(path, "wb") as f:
         f.write(r.content)
 

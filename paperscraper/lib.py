@@ -64,7 +64,7 @@ def format_bibtex(bibtex, key):
     try:
         entry = style.format_entry(label="1", entry=bd.entries[key])
         return entry.text.render_as("text")
-    except KeyError:
+    except Exception:
         return bd.entries[key].fields["title"]
 
 

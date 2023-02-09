@@ -61,8 +61,11 @@ def format_bibtex(bibtex, key):
 
     style = unsrtalpha.Style()
     bd = parse_string(clean_upbibtex(bibtex), "bibtex")
-    entry = style.format_entry(label="1", entry=bd.entries[key])
-    return entry.text.render_as("text")
+    try:
+        entry = style.format_entry(label="1", entry=bd.entries[key])
+        return entry.text.render_as("text")
+    except KeyError:
+        return bd.entries[key].fields["title"]
 
 
 def arxiv_to_pdf(arxiv_id, path):

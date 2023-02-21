@@ -29,6 +29,7 @@ def clean_upbibtex(bibtex):
         "Report": "techreport",
         "Thesis": "phdthesis",
         "WebPage": "misc",
+        "Plain": "article",
     }
 
     if "@None" in bibtex:
@@ -60,8 +61,8 @@ def format_bibtex(bibtex, key):
     from pybtex.style.formatting import unsrtalpha
 
     style = unsrtalpha.Style()
-    bd = parse_string(clean_upbibtex(bibtex), "bibtex")
     try:
+        bd = parse_string(clean_upbibtex(bibtex), "bibtex")
         entry = style.format_entry(label="1", entry=bd.entries[key])
         return entry.text.render_as("text")
     except Exception:

@@ -1,5 +1,7 @@
 import paperscraper
 import os
+from unittest import IsolatedAsyncioTestCase
+from paperscraper.utils import ThrottledClientSession
 
 
 def test_format_bibtex():
@@ -62,45 +64,56 @@ def test_format_bibtex():
     paperscraper.format_bibtex(bibtex3, "Kianfar2019ComparisonAA")
 
 
-def test_arxiv_to_pdf():
-    arxiv_id = "1703.10593"
-    path = "test.pdf"
-    paperscraper.arxiv_to_pdf(arxiv_id, path)
-    assert paperscraper.check_pdf(path)
-    os.remove(path)
+class Test(IsolatedAsyncioTestCase):
+    async def test_arxiv_to_pdf(self):
+        arxiv_id = "1703.10593"
+        path = "test.pdf"
+        async with ThrottledClientSession(rate_limit=15 / 60) as session:
+            await paperscraper.arxiv_to_pdf(arxiv_id, path, session)
+        assert paperscraper.check_pdf(path)
+        os.remove(path)
+
+    async def test_pmc_to_pdf(self):
+        pmc_id = "8971931"
+        path = "test.pdf"
+        async with ThrottledClientSession(rate_limit=15 / 60) as session:
+            await paperscraper.pmc_to_pdf(pmc_id, path, session)
+        assert paperscraper.check_pdf(path)
+        os.remove(path)
+
+    async def test_doi_to_pdf(self):
+        doi = "10.1021/acs.jctc.9b00202"
+        path = "test.pdf"
+        async with ThrottledClientSession(rate_limit=15 / 60) as session:
+            await paperscraper.doi_to_pdf(doi, path, session)
+        assert paperscraper.check_pdf(path)
+        os.remove(path)
+
+    async def test_link_to_pdf(self):
+        link = "https://www.aclweb.org/anthology/N18-3011.pdf"
+        path = "test.pdf"
+        async with ThrottledClientSession(rate_limit=15 / 60) as session:
+            await paperscraper.link_to_pdf(link, path, session)
+        assert paperscraper.check_pdf(path)
+        os.remove(path)
+
+    async def test_search_papers(self):
+        query = "molecular dynamics"
+        papers = await paperscraper.a_search_papers(query, limit=1)
+        assert len(papers) == 1
+
+    async def test_search_papers_offset(self):
+        query = "molecular dynamics"
+        papers = await paperscraper.a_search_papers(query, limit=3, _limit=1)
+        assert len(papers) == 3
+
+    async def test_search_papers_plain(self):
+        query = "meta-reinforcement learning meta reinforcement learning"
+        papers = await paperscraper.a_search_papers(query, limit=1)
+        assert len(papers) == 1
 
 
-def test_pmc_to_pdf():
-    pmc_id = "8971931"
-    path = "test.pdf"
-    paperscraper.pmc_to_pdf(pmc_id, path)
-    assert paperscraper.check_pdf(path)
-    os.remove(path)
-
-
-def test_doi_to_pdf():
-    doi = "10.1021/acs.jctc.9b00202"
-    path = "test.pdf"
-    paperscraper.doi_to_pdf(doi, path)
-    assert paperscraper.check_pdf(path)
-    os.remove(path)
-
-
-def test_link_to_pdf():
-    link = "https://www.aclweb.org/anthology/N18-3011.pdf"
-    path = "test.pdf"
-    paperscraper.link_to_pdf(link, path)
-    assert paperscraper.check_pdf(path)
-    os.remove(path)
-
-
-def test_search_papers():
-    query = "molecular dynamics"
-    papers = paperscraper.search_papers(query, limit=1)
+def test_search_papers_verbose():
+    query = "meta-reinforcement learning meta reinforcement learning"
+    papers = paperscraper.search_papers(query, limit=1, verbose=True)
     assert len(papers) == 1
-
-
-def test_search_papers_offset():
-    query = "molecular dynamics"
-    papers = paperscraper.search_papers(query, limit=3, _limit=1)
-    assert len(papers) == 3

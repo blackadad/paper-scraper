@@ -1,15 +1,10 @@
-import requests
 import os
 import re
 import pypdf
-from requests_ratelimiter import LimiterSession
 from pybtex.bibtex import BibTeXEngine
 from .headers import get_header
-
-arxiv_session = LimiterSession(per_minute=15)
-pmc_session = LimiterSession(per_minute=15)
-doi2pdf_session = LimiterSession(per_minute=15)
-publisher_session = LimiterSession(per_minute=15)
+from .utils import ThrottledClientSession
+import asyncio
 
 
 def clean_upbibtex(bibtex):
@@ -69,36 +64,48 @@ def format_bibtex(bibtex, key):
         return bd.entries[key].fields["title"]
 
 
-def arxiv_to_pdf(arxiv_id, path):
+async def likely_pdf(response):
+    try:
+        text = await response.text()
+        if "Invalid article ID" in text:
+            return False
+        if "No paper" in text:
+            return False
+    except UnicodeDecodeError:
+        return True
+    return True
+
+
+async def arxiv_to_pdf(arxiv_id, path, session):
     url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
     # download
-    r = pmc_session.get(url, allow_redirects=True, headers=get_header())
-    if r.status_code != 200 or f"No paper 'arXiv:{arxiv_id}.pdf'" in r.text:
-        raise Exception(f"No paper with arxiv id {arxiv_id}")
-    with open(path, "wb") as f:
-        f.write(r.content)
+    async with session.get(url, allow_redirects=True) as r:
+        if r.status != 200 or not await likely_pdf(r):
+            raise Exception(f"No paper with arxiv id {arxiv_id}")
+        with open(path, "wb") as f:
+            f.write(await r.read())
 
 
-def link_to_pdf(url, path):
+async def link_to_pdf(url, path, session):
     # download
-    r = publisher_session.get(url, allow_redirects=True, headers=get_header())
-    if r.status_code != 200:
-        raise Exception(f"Unable to download {url}, status code {r.status_code}")
-    with open(path, "wb") as f:
-        f.write(r.content)
+    async with session.get(url, allow_redirects=True) as r:
+        if r.status != 200:
+            raise Exception(f"Unable to download {url}, status code {r.status}")
+        with open(path, "wb") as f:
+            f.write(await r.read())
 
 
-def pmc_to_pdf(pmc_id, path):
+async def pmc_to_pdf(pmc_id, path, session):
     url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/"
     # download
-    r = pmc_session.get(url, allow_redirects=True, headers=get_header())
-    if r.status_code != 200 or "Invalid article ID" in r.text:
-        raise Exception(f"No paper with pmc id {pmc_id}. {url} {r.status_code}")
-    with open(path, "wb") as f:
-        f.write(r.content)
+    async with session.get(url, allow_redirects=True) as r:
+        if r.status != 200 or not await likely_pdf(r):
+            raise Exception(f"No paper with pmc id {pmc_id}. {url} {r.status}")
+        with open(path, "wb") as f:
+            f.write(await r.read())
 
 
-def doi_to_pdf(doi, path):
+async def doi_to_pdf(doi, path, session):
     try:
         base = os.environ.get("DOI2PDF")
     except KeyError:
@@ -109,34 +116,42 @@ def doi_to_pdf(doi, path):
         base = base[:-1]
     url = f"{base}/{doi}"
     # get to iframe thing
-    iframe_r = doi2pdf_session.get(url, allow_redirects=True)
-    if iframe_r.status_code != 200:
-        raise Exception(f"No paper with doi {doi}")
-    # get pdf url by regex
-    # looking for button onclick
-    try:
-        pdf_url = re.search(
-            r"location\.href='(.*?download=true)'", iframe_r.text
-        ).group(1)
-    except AttributeError:
-        raise Exception(f"No paper with doi {doi}")
+    async with session.get(url, allow_redirects=True) as iframe_r:
+        if iframe_r.status != 200:
+            raise Exception(f"No paper with doi {doi}")
+        # get pdf url by regex
+        # looking for button onclick
+        try:
+            pdf_url = re.search(
+                r"location\.href='(.*?download=true)'", await iframe_r.text()
+            ).group(1)
+        except AttributeError:
+            raise Exception(f"No paper with doi {doi}")
     # can be relative or absolute
     if pdf_url.startswith("//"):
         pdf_url = f"https:{pdf_url}"
     else:
         pdf_url = f"{base}{pdf_url}"
-    print(pdf_url)
     # download
-    r = doi2pdf_session.get(pdf_url, allow_redirects=True)
-    with open(path, "wb") as f:
-        f.write(r.content)
+    async with session.get(pdf_url, allow_redirects=True) as r:
+        with open(path, "wb") as f:
+            f.write(await r.read())
 
 
-def search_papers(
-    query, limit=10, pdir=os.curdir, verbose=False, _paths=None, _limit=100, _offset=0
+async def a_search_papers(
+    query,
+    limit=10,
+    pdir=os.curdir,
+    verbose=False,
+    _paths=None,
+    _limit=100,
+    _offset=0,
+    logger=None,
 ):
     if not os.path.exists(pdir):
         os.mkdir(pdir)
+    if logger is None:
+        logger = print
     endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
     params = {
         "query": query,
@@ -154,72 +169,98 @@ def search_papers(
         "limit": _limit,
         "offset": _offset,
     }
-    response = requests.get(endpoint, params=params)
     if _paths is None:
         paths = {}
     else:
         paths = _paths
-    if response.status_code == 200:
-        data = response.json()
-        # resort based on influentialCitationCount
-        papers = data["data"]
-        papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
-        for paper in papers:
-            if len(paths) >= limit:
-                break
-            path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
-            success = check_pdf(path, verbose=verbose)
-            if "ArXiv" in paper["externalIds"] and not success:
-                try:
-                    arxiv_to_pdf(paper["externalIds"]["ArXiv"], path)
-                    success = check_pdf(path, verbose=verbose)
-                    if verbose and success:
-                        print("Downloaded arxiv")
-                except Exception as e:
-                    if verbose:
-                        print("Failed to download arxiv", e)
-            if "PubMed" in paper["externalIds"] and not success:
-                try:
-                    pmc_to_pdf(paper["externalIds"]["PubMed"], path)
-                    success = check_pdf(path, verbose=verbose)
-                    if verbose and success:
-                        print("Downloaded pmc")
-                except Exception as e:
-                    if verbose:
-                        print("Failed to download pmc", e)
-            if "openAccessPdf" in paper and not success:
-                try:
-                    link_to_pdf(paper["openAccessPdf"]["url"], path)
-                    success = check_pdf(path, verbose=verbose)
-                    if verbose and success:
-                        print("Downloaded openAccessPdf")
-                except Exception as e:
-                    if verbose:
-                        print("Failed to download openAccessPdf", e)
-            if "DOI" in paper["externalIds"] and not success:
-                try:
-                    doi_to_pdf(paper["externalIds"]["DOI"], path)
-                    success = check_pdf(path, verbose=verbose)
-                    if verbose and success:
-                        print("Downloaded doi")
-                except Exception as e:
-                    if verbose:
-                        print("Failed to download other", e)
-            if not success:
-                print(f'Could not download {paper["paperId"]}')
-                print("External IDs:")
-                print(paper["externalIds"])
-            else:
-                bibtex = paper["citationStyles"]["bibtex"]
-                key = bibtex.split("{")[1].split(",")[0]
-                paths[path] = dict(
-                    citation=format_bibtex(bibtex, key), key=key, bibtex=bibtex
+
+    async with ThrottledClientSession(
+        rate_limit=15 / 60, headers=get_header()
+    ) as ss_session, ThrottledClientSession(
+        rate_limit=15 / 60, headers=get_header()
+    ) as arxiv_session, ThrottledClientSession(
+        rate_limit=15 / 60, headers=get_header()
+    ) as pmc_session, ThrottledClientSession(
+        rate_limit=15 / 60, headers=get_header()
+    ) as doi2pdf_session, ThrottledClientSession(
+        rate_limit=15 / 60, headers=get_header()
+    ) as publisher_session:
+        async with ss_session.get(url=endpoint, params=params) as response:
+            if response.status != 200:
+                raise Exception(f"Error searching papers: {response.status}")
+            data = await response.json()
+            # resort based on influentialCitationCount
+            papers = data["data"]
+            papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
+            if verbose:
+                logger(
+                    f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
                 )
-                if verbose:
-                    print("Succeeded - key:", key)
+            for i, paper in enumerate(papers):
+                if len(paths) >= limit:
+                    break
+                logger(f"Paper {i}")
+                path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
+                success = check_pdf(path, verbose=verbose)
+                if success and verbose:
+                    logger("\tfound downloaded version")
+                if "ArXiv" in paper["externalIds"] and not success:
+                    try:
+                        await arxiv_to_pdf(
+                            paper["externalIds"]["ArXiv"], path, arxiv_session
+                        )
+                        success = check_pdf(path, verbose=verbose)
+                        if verbose and success:
+                            logger("\tarxiv succeeded")
+                    except Exception as e:
+                        if verbose:
+                            logger("\tarxiv failed")
+                if "PubMed" in paper["externalIds"] and not success:
+                    try:
+                        await pmc_to_pdf(
+                            paper["externalIds"]["PubMed"], path, pmc_session
+                        )
+                        success = check_pdf(path, verbose=verbose)
+                        if verbose and success:
+                            logger("\tpmc succeeded")
+                    except Exception as e:
+                        if verbose:
+                            logger("\tpmc failed")
+                if "openAccessPdf" in paper and not success:
+                    try:
+                        await link_to_pdf(
+                            paper["openAccessPdf"]["url"], path, publisher_session
+                        )
+                        success = check_pdf(path, verbose=verbose)
+                        if verbose and success:
+                            logger("\topen access succeeded")
+                    except Exception as e:
+                        if verbose:
+                            logger("\topen access failed")
+                if "DOI" in paper["externalIds"] and not success:
+                    try:
+                        await doi_to_pdf(
+                            paper["externalIds"]["DOI"], path, doi2pdf_session
+                        )
+                        success = check_pdf(path, verbose=verbose)
+                        if verbose and success:
+                            logger("\tother succeeded")
+                    except Exception as e:
+                        if verbose:
+                            logger("\tother failed")
+                if verbose and not success:
+                    logger("\tfailed")
+                else:
+                    bibtex = paper["citationStyles"]["bibtex"]
+                    key = bibtex.split("{")[1].split(",")[0]
+                    paths[path] = dict(
+                        citation=format_bibtex(bibtex, key), key=key, bibtex=bibtex
+                    )
+                    if verbose:
+                        logger("\tsucceeded - key: " + key)
     if len(paths) < limit and _offset + _limit < data["total"]:
         paths.update(
-            search_papers(
+            await a_search_papers(
                 query,
                 limit=limit,
                 pdir=pdir,
@@ -227,6 +268,37 @@ def search_papers(
                 _paths=paths,
                 _limit=_limit,
                 _offset=_offset + _limit,
+                logger=logger,
             )
         )
     return paths
+
+
+def search_papers(
+    query,
+    limit=10,
+    pdir=os.curdir,
+    verbose=False,
+    _paths=None,
+    _limit=100,
+    _offset=0,
+    logger=None,
+):
+    # special case for jupyter notebooks
+    if "get_ipython" in globals():
+        import nest_asyncio
+
+        nest_asyncio.apply()
+    loop = asyncio.get_event_loop()
+    return loop.run_until_complete(
+        a_search_papers(
+            query,
+            limit=limit,
+            pdir=pdir,
+            verbose=verbose,
+            _paths=_paths,
+            _limit=_limit,
+            _offset=_offset,
+            logger=logger,
+        )
+    )

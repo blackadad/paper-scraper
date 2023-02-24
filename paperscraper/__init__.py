@@ -4,6 +4,7 @@ from .lib import (
     arxiv_to_pdf,
     pmc_to_pdf,
     doi_to_pdf,
+    a_search_papers,
     search_papers,
     check_pdf,
     link_to_pdf,

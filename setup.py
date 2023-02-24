@@ -14,7 +14,7 @@ setup(
     url="https://github.com/whitead/paper-scraper",
     license="GPLv3",
     packages=["paperscraper"],
-    install_requires=["requests", "requests-ratelimiter", "pybtex", "pypdf"],
+    install_requires=["aiohttp", "pybtex", "pypdf"],
     test_suite="tests",
     long_description=long_description,
     long_description_content_type="text/markdown",

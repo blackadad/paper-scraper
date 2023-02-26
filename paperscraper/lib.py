@@ -192,8 +192,8 @@ async def a_search_papers(
             if response.status != 200:
                 raise Exception(f"Error searching papers: {response.status}")
             data = await response.json()
-            # resort based on influentialCitationCount
             papers = data["data"]
+            # resort based on influentialCitationCount - is this good?
             papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
             if verbose:
                 logger(

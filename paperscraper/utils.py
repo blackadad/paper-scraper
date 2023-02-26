@@ -76,7 +76,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
                     updated_at = now
                 await asyncio.sleep(sleep)
         except asyncio.CancelledError:
-            print("Cancelled")
+            pass
         except Exception as err:
             print(str(err))
 

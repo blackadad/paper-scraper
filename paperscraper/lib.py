@@ -202,7 +202,6 @@ async def a_search_papers(
             for i, paper in enumerate(papers):
                 if len(paths) >= limit:
                     break
-                logger(f"Paper {i}")
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
                 success = check_pdf(path, verbose=verbose)
                 if success and verbose:

@@ -178,15 +178,15 @@ async def a_search_papers(
         paths = _paths
 
     async with ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
+        limit_count=100, limit_seconds=5*60, headers=get_header()
     ) as ss_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
+        limit_count=15, limit_seconds=1, headers=get_header()
     ) as arxiv_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
+        limit_count=15, limit_seconds=1, headers=get_header()
     ) as pmc_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
+        limit_count=15, limit_seconds=1, headers=get_header()
     ) as doi2pdf_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
+        limit_count=15, limit_seconds=1, headers=get_header()
     ) as publisher_session:
         async with ss_session.get(url=endpoint, params=params) as response:
             if response.status != 200:

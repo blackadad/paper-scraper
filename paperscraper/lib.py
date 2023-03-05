@@ -146,6 +146,7 @@ async def a_search_papers(
     limit=10,
     pdir=os.curdir,
     verbose=False,
+    semantic_scholar_api_key=None,
     _paths=None,
     _limit=100,
     _offset=0,
@@ -176,9 +177,11 @@ async def a_search_papers(
         paths = {}
     else:
         paths = _paths
-
+    ssheader = get_header()
+    if semantic_scholar_api_key is not None:
+        ssheader['x-api-key'] = semantic_scholar_api_key
     async with ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
+        rate_limit=15 / 60, headers=ssheader
     ) as ss_session, ThrottledClientSession(
         rate_limit=15 / 60, headers=get_header()
     ) as arxiv_session, ThrottledClientSession(
@@ -281,6 +284,7 @@ def search_papers(
     limit=10,
     pdir=os.curdir,
     verbose=False,
+    semantic_scholar_api_key=None,
     _paths=None,
     _limit=100,
     _offset=0,
@@ -302,6 +306,7 @@ def search_papers(
             limit=limit,
             pdir=pdir,
             verbose=verbose,
+            semantic_scholar_api_key=semantic_scholar_api_key,
             _paths=_paths,
             _limit=_limit,
             _offset=_offset,

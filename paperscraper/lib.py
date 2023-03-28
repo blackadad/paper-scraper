@@ -168,6 +168,7 @@ async def a_search_papers(
                 "year",
                 "isOpenAccess",
                 "influentialCitationCount",
+                "tldr",
             ]
         ),
         "limit": _limit,
@@ -179,7 +180,7 @@ async def a_search_papers(
         paths = _paths
     ssheader = get_header()
     if semantic_scholar_api_key is not None:
-        ssheader['x-api-key'] = semantic_scholar_api_key
+        ssheader["x-api-key"] = semantic_scholar_api_key
     async with ThrottledClientSession(
         rate_limit=15 / 60, headers=ssheader
     ) as ss_session, ThrottledClientSession(
@@ -193,7 +194,9 @@ async def a_search_papers(
     ) as publisher_session:
         async with ss_session.get(url=endpoint, params=params) as response:
             if response.status != 200:
-                raise Exception(f"Error searching papers: {response.status}")
+                raise Exception(
+                    f"Error searching papers: {response.status} {response.reason} {await response.text()}"
+                )
             data = await response.json()
             papers = data["data"]
             # resort based on influentialCitationCount - is this good?
@@ -259,7 +262,12 @@ async def a_search_papers(
                     bibtex = paper["citationStyles"]["bibtex"]
                     key = bibtex.split("{")[1].split(",")[0]
                     paths[path] = dict(
-                        citation=format_bibtex(bibtex, key), key=key, bibtex=bibtex
+                        citation=format_bibtex(bibtex, key),
+                        key=key,
+                        bibtex=bibtex,
+                        tldr=paper["tldr"],
+                        year=paper["year"],
+                        url=paper["url"],
                     )
                     if verbose:
                         logger("\tsucceeded - key: " + key)

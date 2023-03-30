@@ -181,6 +181,13 @@ async def a_search_papers(
     ssheader = get_header()
     if semantic_scholar_api_key is not None:
         ssheader["x-api-key"] = semantic_scholar_api_key
+    else:
+        # check if its in the environment
+        try:
+            ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
+        except KeyError:
+            pass
+
     async with ThrottledClientSession(
         rate_limit=15 / 60, headers=ssheader
     ) as ss_session, ThrottledClientSession(

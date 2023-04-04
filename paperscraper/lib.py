@@ -5,6 +5,8 @@ from pybtex.bibtex import BibTeXEngine
 from .headers import get_header
 from .utils import ThrottledClientSession
 import asyncio
+import re
+import sys
 
 
 def clean_upbibtex(bibtex):
@@ -98,12 +100,40 @@ async def link_to_pdf(url, path, session):
             f.write(await r.read())
 
 
-async def pmc_to_pdf(pmc_id, path, session):
-    url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}/pdf/"
-    # download
-    async with session.get(url, allow_redirects=True) as r:
-        if r.status != 200 or not await likely_pdf(r):
+async def find_pmc_pdf_link(pmc_id, session):
+    url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}"
+    async with session.get(url) as r:
+        if r.status != 200:
             raise Exception(f"No paper with pmc id {pmc_id}. {url} {r.status}")
+        html_text = await r.text()
+        pdf_link = re.search(r'href="(.*\.pdf)"', html_text)
+        if pdf_link is None:
+            raise Exception(f"No PDF link found for pmc id {pmc_id}. {url}")
+        return f"https://www.ncbi.nlm.nih.gov{pdf_link.group(1)}"
+
+
+async def pubmed_to_pdf(pubmed_id, path, session):
+    url = f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/"
+
+    async with session.get(url) as r:
+        if r.status != 200:
+            raise Exception(
+                f"Error fetching PMC ID for PubMed ID {pubmed_id}. {r.status}"
+            )
+        html_text = await r.text()
+        pmc_id_match = re.search(r"PMC\d+", html_text)
+        if pmc_id_match is None:
+            raise Exception(f"No PMC ID found for PubMed ID {pubmed_id}.")
+        pmc_id = pmc_id_match.group(0)
+    pmc_id = pmc_id[3:]
+    return await pmc_to_pdf(pmc_id, path, session)
+
+
+async def pmc_to_pdf(pmc_id, path, session):
+    pdf_url = await find_pmc_pdf_link(pmc_id, session)
+    async with session.get(pdf_url, allow_redirects=True) as r:
+        if r.status != 200 or not await likely_pdf(r):
+            raise Exception(f"No paper with pmc id {pmc_id}. {pdf_url} {r.status}")
         with open(path, "wb") as f:
             f.write(await r.read())
 
@@ -220,33 +250,54 @@ async def a_search_papers(
                 success = check_pdf(path, verbose=verbose)
                 if success and verbose:
                     logger("\tfound downloaded version")
-                # space them out like so we can balance the load
+                # space them out so we can balance the load
                 sources = [
                     ("ArXiv", arxiv_to_pdf, arxiv_session),
-                    ("PubMed", pmc_to_pdf, pmc_session),
+                    ("PubMedCentral", pmc_to_pdf, pmc_session),
+                    ("PubMed", pubmed_to_pdf, pmc_session),
                     ("openAccessPdf", link_to_pdf, publisher_session),
                     ("DOI", doi_to_pdf, doi2pdf_session),
                 ]
 
                 source = sources[i % len(sources)]
 
-                if source[0] in paper["externalIds"] and not success:
-                    try:
-                        if source[0] == "openAccessPdf":
-                            await source[1](paper[source[0]]["url"], path, source[2])
-                        else:
-                            await source[1](
-                                paper["externalIds"][source[0]], path, source[2]
-                            )
-                        success = check_pdf(path, verbose=verbose)
-                        if verbose and success:
-                            logger(f"\t{source[0].lower()} succeeded")
-                    except Exception as e:
-                        if verbose:
-                            logger(f"\t{source[0].lower()} failed")
+                for _ in range(len(sources)):
+                    source = sources[i % len(sources)]
+
+                    if source[0] in paper["externalIds"] and not success:
+                        try:
+                            if source[0] == "openAccessPdf":
+                                await source[1](
+                                    paper[source[0]]["url"], path, source[2]
+                                )
+                            else:
+                                await source[1](
+                                    paper["externalIds"][source[0]], path, source[2]
+                                )
+                            success = check_pdf(path, verbose=verbose)
+                            if verbose:
+                                if success:
+                                    logger(f"\t{source[0]} succeeded")
+                                else:
+                                    logger(f"pdf check failed at {path}")
+                            if success:
+                                break
+                        except Exception as e:
+                            if verbose:
+                                # print out source type and source url
+                                logger(
+                                    f"\t{source[0]} failed: {paper[source[0]]['url'] if source[0] == 'openAccessPdf' else paper['externalIds'][source[0]]}"
+                                )
+
+                    i += 1
 
                 if verbose and not success:
-                    logger("\tfailed")
+                    logger(
+                        "\tfailed after trying "
+                        + str(paper["externalIds"])
+                        + str(paper["openAccessPdf"])
+                        + " sources"
+                    )
                 else:
                     bibtex = paper["citationStyles"]["bibtex"]
                     key = bibtex.split("{")[1].split(",")[0]
@@ -307,7 +358,7 @@ def search_papers(
     logger=None,
 ):
     # special case for jupyter notebooks
-    if "get_ipython" in globals():
+    if "get_ipython" in globals() or "google.colab" in sys.modules:
         import nest_asyncio
 
         nest_asyncio.apply()

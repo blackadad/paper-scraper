@@ -2,6 +2,7 @@ import paperscraper
 import os
 from unittest import IsolatedAsyncioTestCase
 from paperscraper.utils import ThrottledClientSession
+from paperscraper.headers import get_header
 
 
 def test_format_bibtex():
@@ -68,7 +69,9 @@ class Test(IsolatedAsyncioTestCase):
     async def test_arxiv_to_pdf(self):
         arxiv_id = "1703.10593"
         path = "test.pdf"
-        async with ThrottledClientSession(rate_limit=15 / 60) as session:
+        async with ThrottledClientSession(
+            headers=get_header(), rate_limit=15 / 60
+        ) as session:
             await paperscraper.arxiv_to_pdf(arxiv_id, path, session)
         assert paperscraper.check_pdf(path)
         os.remove(path)
@@ -76,7 +79,9 @@ class Test(IsolatedAsyncioTestCase):
     async def test_pmc_to_pdf(self):
         pmc_id = "8971931"
         path = "test.pdf"
-        async with ThrottledClientSession(rate_limit=15 / 60) as session:
+        async with ThrottledClientSession(
+            headers=get_header(), rate_limit=15 / 60
+        ) as session:
             await paperscraper.pmc_to_pdf(pmc_id, path, session)
         assert paperscraper.check_pdf(path)
         os.remove(path)
@@ -84,15 +89,38 @@ class Test(IsolatedAsyncioTestCase):
     async def test_doi_to_pdf(self):
         doi = "10.1021/acs.jctc.9b00202"
         path = "test.pdf"
-        async with ThrottledClientSession(rate_limit=15 / 60) as session:
+        async with ThrottledClientSession(
+            headers=get_header(), rate_limit=15 / 60
+        ) as session:
             await paperscraper.doi_to_pdf(doi, path, session)
+        assert paperscraper.check_pdf(path)
+        os.remove(path)
+
+    async def test_pubmed_to_pdf(self):
+        path = "test.pdf"
+        async with ThrottledClientSession(
+            headers=get_header(), rate_limit=15 / 60
+        ) as session:
+            await paperscraper.pubmed_to_pdf("27525504", path, session)
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
     async def test_link_to_pdf(self):
         link = "https://www.aclweb.org/anthology/N18-3011.pdf"
         path = "test.pdf"
-        async with ThrottledClientSession(rate_limit=15 / 60) as session:
+        async with ThrottledClientSession(
+            headers=get_header(), rate_limit=15 / 60
+        ) as session:
+            await paperscraper.link_to_pdf(link, path, session)
+        assert paperscraper.check_pdf(path)
+        os.remove(path)
+
+    async def test_link2_to_pdf(self):
+        link = "https://journals.sagepub.com/doi/pdf/10.1177/1087057113498418"
+        path = "test.pdf"
+        async with ThrottledClientSession(
+            headers=get_header(), rate_limit=15 / 60
+        ) as session:
             await paperscraper.link_to_pdf(link, path, session)
         assert paperscraper.check_pdf(path)
         os.remove(path)

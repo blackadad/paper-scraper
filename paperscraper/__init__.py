@@ -8,4 +8,5 @@ from .lib import (
     search_papers,
     check_pdf,
     link_to_pdf,
+    pubmed_to_pdf,
 )

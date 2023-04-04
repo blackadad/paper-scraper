@@ -187,7 +187,7 @@ async def a_search_papers(
             ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
         except KeyError:
             pass
-
+    have_key = "x-api-key" in ssheader
     async with ThrottledClientSession(
         rate_limit=15 / 60, headers=ssheader
     ) as ss_session, ThrottledClientSession(
@@ -212,63 +212,47 @@ async def a_search_papers(
                 logger(
                     f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
                 )
-            for i, paper in enumerate(papers):
+
+            async def process_paper(paper, i):
                 if len(paths) >= limit:
-                    break
+                    return None, None
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
                 success = check_pdf(path, verbose=verbose)
                 if success and verbose:
                     logger("\tfound downloaded version")
-                if "ArXiv" in paper["externalIds"] and not success:
+                # space them out like so we can balance the load
+                sources = [
+                    ("ArXiv", arxiv_to_pdf, arxiv_session),
+                    ("PubMed", pmc_to_pdf, pmc_session),
+                    ("openAccessPdf", link_to_pdf, publisher_session),
+                    ("DOI", doi_to_pdf, doi2pdf_session),
+                ]
+
+                source = sources[i % len(sources)]
+
+                if source[0] in paper["externalIds"] and not success:
                     try:
-                        await arxiv_to_pdf(
-                            paper["externalIds"]["ArXiv"], path, arxiv_session
-                        )
+                        if source[0] == "openAccessPdf":
+                            await source[1](paper[source[0]]["url"], path, source[2])
+                        else:
+                            await source[1](
+                                paper["externalIds"][source[0]], path, source[2]
+                            )
                         success = check_pdf(path, verbose=verbose)
                         if verbose and success:
-                            logger("\tarxiv succeeded")
+                            logger(f"\t{source[0].lower()} succeeded")
                     except Exception as e:
                         if verbose:
-                            logger("\tarxiv failed")
-                if "PubMed" in paper["externalIds"] and not success:
-                    try:
-                        await pmc_to_pdf(
-                            paper["externalIds"]["PubMed"], path, pmc_session
-                        )
-                        success = check_pdf(path, verbose=verbose)
-                        if verbose and success:
-                            logger("\tpmc succeeded")
-                    except Exception as e:
-                        if verbose:
-                            logger("\tpmc failed")
-                if "openAccessPdf" in paper and not success:
-                    try:
-                        await link_to_pdf(
-                            paper["openAccessPdf"]["url"], path, publisher_session
-                        )
-                        success = check_pdf(path, verbose=verbose)
-                        if verbose and success:
-                            logger("\topen access succeeded")
-                    except Exception as e:
-                        if verbose:
-                            logger("\topen access failed")
-                if "DOI" in paper["externalIds"] and not success:
-                    try:
-                        await doi_to_pdf(
-                            paper["externalIds"]["DOI"], path, doi2pdf_session
-                        )
-                        success = check_pdf(path, verbose=verbose)
-                        if verbose and success:
-                            logger("\tother succeeded")
-                    except Exception as e:
-                        if verbose:
-                            logger("\tother failed")
+                            logger(f"\t{source[0].lower()} failed")
+
                 if verbose and not success:
                     logger("\tfailed")
                 else:
                     bibtex = paper["citationStyles"]["bibtex"]
                     key = bibtex.split("{")[1].split(",")[0]
-                    paths[path] = dict(
+                    if verbose:
+                        logger("\tsucceeded - key: " + key)
+                    return path, dict(
                         citation=format_bibtex(bibtex, key),
                         key=key,
                         bibtex=bibtex,
@@ -276,8 +260,25 @@ async def a_search_papers(
                         year=paper["year"],
                         url=paper["url"],
                     )
-                    if verbose:
-                        logger("\tsucceeded - key: " + key)
+                return None, None
+
+            # batch them, since since we may reach desired limit before all done
+            batch_size = 10
+            for i in range(0, len(papers), batch_size):
+                batch = papers[i : i + batch_size]
+                results = await asyncio.gather(
+                    *[process_paper(p, i + j) for j, p in enumerate(batch)]
+                )
+                for path, info in results:
+                    if path is not None:
+                        paths[path] = info
+                    # if we have enough, stop
+                    if len(paths) >= limit:
+                        break
+                # if we have enough, stop
+                if len(paths) >= limit:
+                    break
+
     if len(paths) < limit and _offset + _limit < data["total"]:
         paths.update(
             await a_search_papers(
@@ -311,7 +312,7 @@ def search_papers(
 
         nest_asyncio.apply()
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)

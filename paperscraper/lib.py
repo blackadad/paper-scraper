@@ -219,13 +219,13 @@ async def a_search_papers(
             pass
     have_key = "x-api-key" in ssheader
     async with ThrottledClientSession(
-        rate_limit=15 / 60, headers=ssheader
+        rate_limit=90 if 'x-api-key' in ssheader else 15 / 60, headers=ssheader
     ) as ss_session, ThrottledClientSession(
         rate_limit=15 / 60, headers=get_header()
     ) as arxiv_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
+        rate_limit=30 / 60, headers=get_header()
     ) as pmc_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
+        rate_limit=30 / 60, headers=get_header()
     ) as doi2pdf_session, ThrottledClientSession(
         rate_limit=15 / 60, headers=get_header()
     ) as publisher_session:

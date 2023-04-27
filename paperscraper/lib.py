@@ -116,7 +116,7 @@ async def link_to_pdf(url, path, session):
     try:
         if pdf_link is None:
             raise RuntimeError(f"No PDF link found for {url}")
-        result =  await link_to_pdf(pdf_link, path, session)
+        result = await link_to_pdf(pdf_link, path, session)
     except TypeError:
         raise RuntimeError(f"Malformed URL {pdf_link} -- {url}")
 
@@ -242,7 +242,7 @@ async def a_search_papers(
             pass
     have_key = "x-api-key" in ssheader
     async with ThrottledClientSession(
-        rate_limit=90 if 'x-api-key' in ssheader else 15 / 60, headers=ssheader
+        rate_limit=90 if "x-api-key" in ssheader else 15 / 60, headers=ssheader
     ) as ss_session, ThrottledClientSession(
         rate_limit=15 / 60, headers=get_header()
     ) as arxiv_session, ThrottledClientSession(
@@ -281,7 +281,7 @@ async def a_search_papers(
                     ("openAccessPdf", link_to_pdf, publisher_session),
                     ("DOI", doi_to_pdf, doi2pdf_session),
                 ]
-                
+
                 source = sources[i % len(sources)]
 
                 for _ in range(len(sources)):

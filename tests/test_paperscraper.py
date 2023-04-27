@@ -126,7 +126,7 @@ class Test(IsolatedAsyncioTestCase):
         os.remove(path)
 
     async def test_doi_to_pdf_open(self):
-        doi = '10.1002/elsc.201300021'
+        doi = "10.1002/elsc.201300021"
         path = "test.pdf"
         async with ThrottledClientSession(
             headers=get_header(), rate_limit=15 / 60

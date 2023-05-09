@@ -11,7 +11,7 @@ setup(
     description="LLM Chain for answering questions from docs ",
     author="blackadad",
     author_email="hello@futureforecasts.io",
-    url="https://github.com/whitead/paper-scraper",
+    url="https://github.com/blackadad/paper-scraper",
     license="GPLv3",
     packages=["paperscraper"],
     install_requires=["aiohttp", "pybtex", "pypdf"],

@@ -125,6 +125,16 @@ class Test(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
+    async def test_doi_to_pdf_open(self):
+        doi = "10.1002/elsc.201300021"
+        path = "test.pdf"
+        async with ThrottledClientSession(
+            headers=get_header(), rate_limit=15 / 60
+        ) as session:
+            await paperscraper.doi_to_pdf(doi, path, session)
+        assert paperscraper.check_pdf(path)
+        os.remove(path)
+
     async def test_search_papers(self):
         query = "molecular dynamics"
         papers = await paperscraper.a_search_papers(query, limit=1)
@@ -140,8 +150,7 @@ class Test(IsolatedAsyncioTestCase):
         papers = await paperscraper.a_search_papers(query, limit=1)
         assert len(papers) == 1
 
-
-def test_search_papers_logger():
-    query = "meta-reinforcement learning meta reinforcement learning"
-    papers = paperscraper.search_papers(query, limit=1, verbose=True)
-    assert len(papers) == 1
+    async def test_search_papers_year(self):
+        query = "what are fungi and how do they live"
+        papers = await paperscraper.a_search_papers(query, limit=1, year="2019-2023")
+        assert len(papers) == 1

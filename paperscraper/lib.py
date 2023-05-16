@@ -77,29 +77,50 @@ async def arxiv_to_pdf(arxiv_id, path, session):
     # download
     async with session.get(url, allow_redirects=True) as r:
         if r.status != 200 or not await likely_pdf(r):
-            raise Exception(f"No paper with arxiv id {arxiv_id}")
+            raise RuntimeError(f"No paper with arxiv id {arxiv_id}")
         with open(path, "wb") as f:
             f.write(await r.read())
 
 
 async def link_to_pdf(url, path, session):
     # download
+    pdf_link = None
     async with session.get(url, allow_redirects=True) as r:
         if r.status != 200:
-            raise Exception(f"Unable to download {url}, status code {r.status}")
-        with open(path, "wb") as f:
-            f.write(await r.read())
+            raise RuntimeError(f"Unable to download {url}, status code {r.status}")
+        if "pdf" in r.headers["Content-Type"]:
+            with open(path, "wb") as f:
+                f.write(await r.read())
+        else:
+            # try to find a pdf link
+            html_text = await r.text()
+            # should have pdf somewhere (could not be at end)
+            epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
+            if epdf_link is None:
+                pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
+                # try to find epdf link
+                if pdf_link is None:
+                    raise RuntimeError(f"No PDF link found for {url}")
+            else:
+                # strip the epdf
+                pdf_link = epdf_link.group(1).replace("epdf", "pdf")
+    try:
+        if pdf_link is None:
+            raise RuntimeError(f"No PDF link found for {url}")
+        result = await link_to_pdf(pdf_link, path, session)
+    except TypeError:
+        raise RuntimeError(f"Malformed URL {pdf_link} -- {url}")
 
 
 async def find_pmc_pdf_link(pmc_id, session):
     url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}"
     async with session.get(url) as r:
         if r.status != 200:
-            raise Exception(f"No paper with pmc id {pmc_id}. {url} {r.status}")
+            raise RuntimeError(f"No paper with pmc id {pmc_id}. {url} {r.status}")
         html_text = await r.text()
         pdf_link = re.search(r'href="(.*\.pdf)"', html_text)
         if pdf_link is None:
-            raise Exception(f"No PDF link found for pmc id {pmc_id}. {url}")
+            raise RuntimeError(f"No PDF link found for pmc id {pmc_id}. {url}")
         return f"https://www.ncbi.nlm.nih.gov{pdf_link.group(1)}"
 
 
@@ -108,13 +129,13 @@ async def pubmed_to_pdf(pubmed_id, path, session):
 
     async with session.get(url) as r:
         if r.status != 200:
-            raise Exception(
+            raise RuntimeError(
                 f"Error fetching PMC ID for PubMed ID {pubmed_id}. {r.status}"
             )
         html_text = await r.text()
         pmc_id_match = re.search(r"PMC\d+", html_text)
         if pmc_id_match is None:
-            raise Exception(f"No PMC ID found for PubMed ID {pubmed_id}.")
+            raise RuntimeError(f"No PMC ID found for PubMed ID {pubmed_id}.")
         pmc_id = pmc_id_match.group(0)
     pmc_id = pmc_id[3:]
     return await pmc_to_pdf(pmc_id, path, session)
@@ -124,25 +145,27 @@ async def pmc_to_pdf(pmc_id, path, session):
     pdf_url = await find_pmc_pdf_link(pmc_id, session)
     async with session.get(pdf_url, allow_redirects=True) as r:
         if r.status != 200 or not await likely_pdf(r):
-            raise Exception(f"No paper with pmc id {pmc_id}. {pdf_url} {r.status}")
+            raise RuntimeError(f"No paper with pmc id {pmc_id}. {pdf_url} {r.status}")
         with open(path, "wb") as f:
             f.write(await r.read())
 
 
 async def doi_to_pdf(doi, path, session):
+    # worth a shot
     try:
-        base = os.environ.get("DOI2PDF")
-    except KeyError:
-        raise Exception(
-            "Please set the environment variable DOI2PDF to a website that can convert a DOI to a PDF."
-        )
+        return await link_to_pdf(f"https://doi.org/{doi}", path, session)
+    except Exception as e:
+        pass
+    base = os.environ.get("DOI2PDF")
+    if base is None:
+        raise RuntimeError("No DOI2PDF environment variable set")
     if base[-1] == "/":
         base = base[:-1]
     url = f"{base}/{doi}"
     # get to iframe thing
     async with session.get(url, allow_redirects=True) as iframe_r:
         if iframe_r.status != 200:
-            raise Exception(f"No paper with doi {doi}")
+            raise RuntimeError(f"No paper with doi {doi}")
         # get pdf url by regex
         # looking for button onclick
         try:
@@ -150,7 +173,7 @@ async def doi_to_pdf(doi, path, session):
                 r"location\.href='(.*?download=true)'", await iframe_r.text()
             ).group(1)
         except AttributeError:
-            raise Exception(f"No paper with doi {doi}")
+            raise RuntimeError(f"No paper with doi {doi}")
     # can be relative or absolute
     if pdf_url.startswith("//"):
         pdf_url = f"https:{pdf_url}"
@@ -211,6 +234,7 @@ async def a_search_papers(
     _limit=100,
     _offset=0,
     logger=None,
+    year=None,
 ):
     if not os.path.exists(pdir):
         os.mkdir(pdir)
@@ -238,6 +262,8 @@ async def a_search_papers(
         "limit": _limit,
         "offset": _offset,
     }
+    if year is not None:
+        params["year"] = year
     if _paths is None:
         paths = {}
     else:
@@ -254,11 +280,11 @@ async def a_search_papers(
             pass
     have_key = "x-api-key" in ssheader
     async with ThrottledClientSession(
-        rate_limit=15 / 60, headers=ssheader
+        rate_limit=90 if "x-api-key" in ssheader else 15 / 60, headers=ssheader
     ) as ss_session:
         async with ss_session.get(url=endpoint, params=params) as response:
             if response.status != 200:
-                raise Exception(
+                raise RuntimeError(
                     f"Error searching papers: {response.status} {response.reason} {await response.text()}"
                 )
             data = await response.json()
@@ -275,7 +301,7 @@ async def a_search_papers(
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
                 success = await scraper.scrape(paper, path, i=i, logger=logger)
                 if not success:
-                    logger.info(
+                    logger.debug(
                         "\tfailed after trying "
                         + str(paper["externalIds"])
                         + str(paper["openAccessPdf"])
@@ -336,6 +362,7 @@ def search_papers(
     _limit=100,
     _offset=0,
     logger=None,
+    year=year,
 ):
     # special case for jupyter notebooks
     if "get_ipython" in globals() or "google.colab" in sys.modules:
@@ -344,7 +371,7 @@ def search_papers(
         nest_asyncio.apply()
     try:
         loop = asyncio.get_running_loop()
-    except RuntimeError:
+    except RuntimeError as e:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(
@@ -357,5 +384,6 @@ def search_papers(
             _limit=_limit,
             _offset=_offset,
             logger=logger,
+            year=year,
         )
     )

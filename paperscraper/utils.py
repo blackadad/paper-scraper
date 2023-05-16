@@ -20,7 +20,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
     MIN_SLEEP = 0.1
 
     def __init__(self, rate_limit: float = None, *args, **kwargs) -> None:
-        # rate_limit - think it's per second?!
+        # rate_limit - per second
         super().__init__(*args, **kwargs)
         self.rate_limit = rate_limit
         self._fillerTask = None
@@ -92,8 +92,20 @@ class ThrottledClientSession(aiohttp.ClientSession):
 
     async def _request(self, *args, **kwargs) -> aiohttp.ClientResponse:
         """Throttled _request()"""
-        await self._allow()
-        return await super()._request(*args, **kwargs)
+        for retries in range(0, 5):
+            await self._allow()
+            response = await super()._request(*args, **kwargs)
+            if (
+                response
+                and response.status == 429
+                and response.headers["x-amzn-ErrorType"] == "TooManyRequestsException"
+            ):
+                # cloudfront paid service limit; amazon says to use exponential backoff and retry
+                # they give the below formula as an example.
+                await asyncio.sleep((2**retries) * 0.1)
+                continue
+            break
+        return response
 
 
 def check_pdf(path, verbose=False):

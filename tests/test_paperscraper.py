@@ -141,7 +141,7 @@ class Test(IsolatedAsyncioTestCase):
         assert len(papers) == 1
 
 
-def test_search_papers_verbose():
+def test_search_papers_logger():
     query = "meta-reinforcement learning meta reinforcement learning"
     papers = paperscraper.search_papers(query, limit=1, verbose=True)
     assert len(papers) == 1

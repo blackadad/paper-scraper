@@ -3,6 +3,7 @@ import os
 import time
 from typing import Optional
 import aiohttp
+import pypdf
 
 
 class ThrottledClientSession(aiohttp.ClientSession):
@@ -93,3 +94,15 @@ class ThrottledClientSession(aiohttp.ClientSession):
         """Throttled _request()"""
         await self._allow()
         return await super()._request(*args, **kwargs)
+
+
+def check_pdf(path, verbose=False):
+    if not os.path.exists(path):
+        return False
+    try:
+        pdf = pypdf.PdfReader(path)
+    except (pypdf.errors.PyPdfError, ValueError) as e:
+        if verbose:
+            print(f"PDF at {path} is corrupt: {e}")
+        return False
+    return True

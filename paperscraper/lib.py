@@ -1,12 +1,15 @@
 import os
 import re
-import pypdf
+import pybtex
 from pybtex.bibtex import BibTeXEngine
 from .headers import get_header
-from .utils import ThrottledClientSession
+from .utils import ThrottledClientSession, check_pdf
+from .scraper import Scraper
 import asyncio
 import re
 import sys
+import logging
+from .log_formatter import CustomFormatter
 
 
 def clean_upbibtex(bibtex):
@@ -38,18 +41,6 @@ def clean_upbibtex(bibtex):
             bibtex = bibtex.replace(f"@['{bib_type}']", f"@{v}")
             break
     return bibtex
-
-
-def check_pdf(path, verbose=False):
-    if not os.path.exists(path):
-        return False
-    try:
-        pdf = pypdf.PdfReader(path)
-    except (pypdf.errors.PyPdfError, ValueError) as e:
-        if verbose:
-            print(f"PDF at {path} is corrupt: {e}")
-        return False
-    return True
 
 
 def format_bibtex(bibtex, key):
@@ -171,11 +162,50 @@ async def doi_to_pdf(doi, path, session):
             f.write(await r.read())
 
 
+async def arxiv_scrape(paper, path, session):
+    arxiv_id = paper["externalIds"]["ArXiv"]
+    await arxiv_to_pdf(arxiv_id, path, session)
+
+
+async def pmc_scraper(paper, path, session):
+    pmc_id = paper["externalIds"]["PubMedCentral"]
+    await pmc_to_pdf(pmc_id, path, session)
+
+
+async def pubmed_scraper(paper, path, session):
+    pubmed_id = paper["externalIds"]["PubMed"]
+    await pubmed_to_pdf(pubmed_id, path, session)
+
+
+async def openaccess_scraper(paper, path, session):
+    url = paper["openAccessPdf"]["url"]
+    await link_to_pdf(url, path, session)
+
+
+async def doi_scraper(paper, path, session):
+    doi = paper["externalIds"]["DOI"]
+    await doi_to_pdf(doi, path, session)
+
+
+async def local_scraper(paper, path):
+    pass
+
+
+def default_scraper():
+    scraper = Scraper()
+    scraper.register_scraper(arxiv_scrape, attach_session=True)
+    scraper.register_scraper(pmc_scraper, attach_session=True)
+    scraper.register_scraper(pubmed_scraper, attach_session=True)
+    scraper.register_scraper(openaccess_scraper, attach_session=True, priority=5)
+    scraper.register_scraper(doi_scraper, attach_session=True, priority=0)
+    scraper.register_scraper(local_scraper, attach_session=False, priority=999)
+    return scraper
+
+
 async def a_search_papers(
     query,
     limit=10,
     pdir=os.curdir,
-    verbose=False,
     semantic_scholar_api_key=None,
     _paths=None,
     _limit=100,
@@ -185,7 +215,11 @@ async def a_search_papers(
     if not os.path.exists(pdir):
         os.mkdir(pdir)
     if logger is None:
-        logger = print
+        logger = logging.getLogger("paper-scraper")
+        logger.setLevel(logging.DEBUG)  # TODO: change to WARNING
+        ch = logging.StreamHandler()
+        ch.setFormatter(CustomFormatter())
+        logger.addHandler(ch)
     endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
     params = {
         "query": query,
@@ -208,6 +242,7 @@ async def a_search_papers(
         paths = {}
     else:
         paths = _paths
+    scraper = default_scraper()
     ssheader = get_header()
     if semantic_scholar_api_key is not None:
         ssheader["x-api-key"] = semantic_scholar_api_key
@@ -220,15 +255,7 @@ async def a_search_papers(
     have_key = "x-api-key" in ssheader
     async with ThrottledClientSession(
         rate_limit=15 / 60, headers=ssheader
-    ) as ss_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
-    ) as arxiv_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
-    ) as pmc_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
-    ) as doi2pdf_session, ThrottledClientSession(
-        rate_limit=15 / 60, headers=get_header()
-    ) as publisher_session:
+    ) as ss_session:
         async with ss_session.get(url=endpoint, params=params) as response:
             if response.status != 200:
                 raise Exception(
@@ -238,61 +265,17 @@ async def a_search_papers(
             papers = data["data"]
             # resort based on influentialCitationCount - is this good?
             papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
-            if verbose:
-                logger(
-                    f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
-                )
+            logger.info(
+                f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
+            )
 
             async def process_paper(paper, i):
                 if len(paths) >= limit:
                     return None, None
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
-                success = check_pdf(path, verbose=verbose)
-                if success and verbose:
-                    logger("\tfound downloaded version")
-                # space them out so we can balance the load
-                sources = [
-                    ("ArXiv", arxiv_to_pdf, arxiv_session),
-                    ("PubMedCentral", pmc_to_pdf, pmc_session),
-                    ("PubMed", pubmed_to_pdf, pmc_session),
-                    ("openAccessPdf", link_to_pdf, publisher_session),
-                    ("DOI", doi_to_pdf, doi2pdf_session),
-                ]
-
-                source = sources[i % len(sources)]
-
-                for _ in range(len(sources)):
-                    source = sources[i % len(sources)]
-
-                    if source[0] in paper["externalIds"] and not success:
-                        try:
-                            if source[0] == "openAccessPdf":
-                                await source[1](
-                                    paper[source[0]]["url"], path, source[2]
-                                )
-                            else:
-                                await source[1](
-                                    paper["externalIds"][source[0]], path, source[2]
-                                )
-                            success = check_pdf(path, verbose=verbose)
-                            if verbose:
-                                if success:
-                                    logger(f"\t{source[0]} succeeded")
-                                else:
-                                    logger(f"pdf check failed at {path}")
-                            if success:
-                                break
-                        except Exception as e:
-                            if verbose:
-                                # print out source type and source url
-                                logger(
-                                    f"\t{source[0]} failed: {paper[source[0]]['url'] if source[0] == 'openAccessPdf' else paper['externalIds'][source[0]]}"
-                                )
-
-                    i += 1
-
-                if verbose and not success:
-                    logger(
+                success = await scraper.scrape(paper, path, i=i, logger=logger)
+                if not success:
+                    logger.info(
                         "\tfailed after trying "
                         + str(paper["externalIds"])
                         + str(paper["openAccessPdf"])
@@ -301,8 +284,7 @@ async def a_search_papers(
                 else:
                     bibtex = paper["citationStyles"]["bibtex"]
                     key = bibtex.split("{")[1].split(",")[0]
-                    if verbose:
-                        logger("\tsucceeded - key: " + key)
+                    logger.debug("\tsucceeded - key: " + key)
                     return path, dict(
                         citation=format_bibtex(bibtex, key),
                         key=key,
@@ -329,14 +311,13 @@ async def a_search_papers(
                 # if we have enough, stop
                 if len(paths) >= limit:
                     break
-
+    await scraper.close()
     if len(paths) < limit and _offset + _limit < data["total"]:
         paths.update(
             await a_search_papers(
                 query,
                 limit=limit,
                 pdir=pdir,
-                verbose=verbose,
                 _paths=paths,
                 _limit=_limit,
                 _offset=_offset + _limit,
@@ -350,7 +331,6 @@ def search_papers(
     query,
     limit=10,
     pdir=os.curdir,
-    verbose=False,
     semantic_scholar_api_key=None,
     _paths=None,
     _limit=100,
@@ -372,7 +352,6 @@ def search_papers(
             query,
             limit=limit,
             pdir=pdir,
-            verbose=verbose,
             semantic_scholar_api_key=semantic_scholar_api_key,
             _paths=_paths,
             _limit=_limit,

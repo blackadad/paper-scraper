@@ -9,5 +9,6 @@ from .lib import (
     check_pdf,
     link_to_pdf,
     pubmed_to_pdf,
+    default_scraper,
 )
 from .scraper import Scraper

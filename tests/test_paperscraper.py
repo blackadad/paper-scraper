@@ -135,22 +135,48 @@ class Test(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
+
+class Test2(IsolatedAsyncioTestCase):
     async def test_search_papers(self):
         query = "molecular dynamics"
         papers = await paperscraper.a_search_papers(query, limit=1)
         assert len(papers) == 1
 
+
+class Test3(IsolatedAsyncioTestCase):
     async def test_search_papers_offset(self):
         query = "molecular dynamics"
         papers = await paperscraper.a_search_papers(query, limit=3, _limit=1)
         assert len(papers) == 3
 
+
+class Test4(IsolatedAsyncioTestCase):
     async def test_search_papers_plain(self):
         query = "meta-reinforcement learning meta reinforcement learning"
         papers = await paperscraper.a_search_papers(query, limit=1)
         assert len(papers) == 1
 
+
+class Test5(IsolatedAsyncioTestCase):
     async def test_search_papers_year(self):
-        query = "what are fungi and how do they live"
+        query = "covid vaccination"
         papers = await paperscraper.a_search_papers(query, limit=1, year="2019-2023")
         assert len(papers) == 1
+
+
+class Test6(IsolatedAsyncioTestCase):
+    async def test_verbose(self):
+        query = "Fungi"
+        papers = await paperscraper.a_search_papers(query, limit=1, verbose=False)
+        assert len(papers) == 1
+
+
+class Test7(IsolatedAsyncioTestCase):
+    async def test_custom_scraper(self):
+        query = "covid vaccination"
+        scraper = paperscraper.Scraper()
+        scraper = scraper.register_scraper(
+            lambda paper, path, **kwargs: None, priority=0, name="test", check=False
+        )
+        papers = await paperscraper.a_search_papers(query, limit=5, scraper=scraper)
+        assert len(papers) == 5

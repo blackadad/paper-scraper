@@ -186,32 +186,47 @@ async def doi_to_pdf(doi, path, session):
 
 
 async def arxiv_scrape(paper, path, session):
+    if "ArXiv" not in paper["externalIds"]:
+        return False
     arxiv_id = paper["externalIds"]["ArXiv"]
     await arxiv_to_pdf(arxiv_id, path, session)
+    return True
 
 
 async def pmc_scraper(paper, path, session):
+    if "PubMedCentral" not in paper["externalIds"]:
+        return False
     pmc_id = paper["externalIds"]["PubMedCentral"]
     await pmc_to_pdf(pmc_id, path, session)
+    return True
 
 
 async def pubmed_scraper(paper, path, session):
+    if "PubMed" not in paper["externalIds"]:
+        return False
     pubmed_id = paper["externalIds"]["PubMed"]
     await pubmed_to_pdf(pubmed_id, path, session)
+    return True
 
 
 async def openaccess_scraper(paper, path, session):
+    if not paper["isOpenAccess"]:
+        return False
     url = paper["openAccessPdf"]["url"]
     await link_to_pdf(url, path, session)
+    return True
 
 
 async def doi_scraper(paper, path, session):
+    if "DOI" not in paper["externalIds"]:
+        return False
     doi = paper["externalIds"]["DOI"]
     await doi_to_pdf(doi, path, session)
+    return True
 
 
 async def local_scraper(paper, path):
-    pass
+    return True
 
 
 def default_scraper():
@@ -235,12 +250,16 @@ async def a_search_papers(
     _offset=0,
     logger=None,
     year=None,
+    verbose=False,
+    scraper=None,
 ):
     if not os.path.exists(pdir):
         os.mkdir(pdir)
     if logger is None:
         logger = logging.getLogger("paper-scraper")
-        logger.setLevel(logging.DEBUG)  # TODO: change to WARNING
+        logger.setLevel(logging.ERROR)
+    if verbose:
+        logger.setLevel(logging.DEBUG)
         ch = logging.StreamHandler()
         ch.setFormatter(CustomFormatter())
         logger.addHandler(ch)
@@ -268,7 +287,8 @@ async def a_search_papers(
         paths = {}
     else:
         paths = _paths
-    scraper = default_scraper()
+    if scraper is None:
+        scraper = default_scraper()
     ssheader = get_header()
     if semantic_scholar_api_key is not None:
         ssheader["x-api-key"] = semantic_scholar_api_key
@@ -362,7 +382,9 @@ def search_papers(
     _limit=100,
     _offset=0,
     logger=None,
-    year=year,
+    year=None,
+    verbose=False,
+    scraper=None,
 ):
     # special case for jupyter notebooks
     if "get_ipython" in globals() or "google.colab" in sys.modules:
@@ -385,5 +407,7 @@ def search_papers(
             _offset=_offset,
             logger=logger,
             year=year,
+            verbose=verbose,
+            scraper=scraper,
         )
     )

@@ -10,3 +10,4 @@ from .lib import (
     link_to_pdf,
     pubmed_to_pdf,
 )
+from .scraper import Scraper

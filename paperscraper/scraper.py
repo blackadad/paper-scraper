@@ -9,20 +9,23 @@ class ScraperFunction:
     priority: int
     kwargs: dict
     name: str
+    check_pdf: bool
 
 
 class Scraper:
     scrapers = []
     sorted_scrapers = []
 
-    def register_scraper(self, func, attach_session=False, priority=10, name=None):
+    def register_scraper(
+        self, func, attach_session=False, priority=10, name=None, check=True
+    ):
         kwargs = {}
         if name is None:
             name = func.__name__
         if attach_session:
             sess = ThrottledClientSession(rate_limit=15 / 60, headers=get_header())
             kwargs["session"] = sess
-        self.scrapers.append(ScraperFunction(func, priority, kwargs, name))
+        self.scrapers.append(ScraperFunction(func, priority, kwargs, name, check))
         # reshape sorted scrapers
         sorted_scrapers = []
         for priority in sorted(set([s.priority for s in self.scrapers])):
@@ -43,8 +46,8 @@ class Scraper:
                 j = (j + i) % len(scrapers)
                 scraper = scrapers[j]
                 try:
-                    await scraper.function(paper, path, **scraper.kwargs)
-                    if check_pdf(path):
+                    result = await scraper.function(paper, path, **scraper.kwargs)
+                    if result and (not scraper.check_pdf or check_pdf(path)):
                         return True
                 except Exception as e:
                     if logger is not None:

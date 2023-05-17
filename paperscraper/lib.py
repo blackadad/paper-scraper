@@ -282,7 +282,7 @@ async def a_search_papers(
         "offset": _offset,
     }
     if year is not None:
-        params["year"] = year
+        params["year"] = year.strip()
     if _paths is None:
         paths = {}
     else:

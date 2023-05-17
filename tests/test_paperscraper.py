@@ -146,15 +146,15 @@ class Test2(IsolatedAsyncioTestCase):
 class Test3(IsolatedAsyncioTestCase):
     async def test_search_papers_offset(self):
         query = "molecular dynamics"
-        papers = await paperscraper.a_search_papers(query, limit=3, _limit=1)
-        assert len(papers) == 3
+        papers = await paperscraper.a_search_papers(query, limit=10, _limit=5)
+        assert len(papers) == 10
 
 
 class Test4(IsolatedAsyncioTestCase):
     async def test_search_papers_plain(self):
         query = "meta-reinforcement learning meta reinforcement learning"
-        papers = await paperscraper.a_search_papers(query, limit=1)
-        assert len(papers) == 1
+        papers = await paperscraper.a_search_papers(query, limit=3, verbose=True)
+        assert len(papers) == 3
 
 
 class Test5(IsolatedAsyncioTestCase):
@@ -180,3 +180,11 @@ class Test7(IsolatedAsyncioTestCase):
         )
         papers = await paperscraper.a_search_papers(query, limit=5, scraper=scraper)
         assert len(papers) == 5
+
+
+class Test8(IsolatedAsyncioTestCase):
+    async def test_scraper_length(self):
+        # make sure default scraper doesn't duplicate scrapers
+        scraper = paperscraper.default_scraper()
+        assert len(scraper.scrapers) == sum([len(s) for s in scraper.sorted_scrapers])
+        await scraper.close()

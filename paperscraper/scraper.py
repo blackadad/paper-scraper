@@ -11,10 +11,14 @@ class ScraperFunction:
     name: str
     check_pdf: bool
 
+    def __str__(self):
+        return f"{self.name} - {self.priority}"
+
 
 class Scraper:
-    scrapers = []
-    sorted_scrapers = []
+    def __init__(self):
+        self.scrapers = []
+        self.sorted_scrapers = []
 
     def register_scraper(
         self, func, attach_session=False, priority=10, name=None, check=True
@@ -48,13 +52,16 @@ class Scraper:
                 try:
                     result = await scraper.function(paper, path, **scraper.kwargs)
                     if result and (not scraper.check_pdf or check_pdf(path)):
+                        if logger is not None:
+                            logger.debug(
+                                f"\tsucceeded - key: {paper['paperId']} scraper: {scraper.name}"
+                            )
                         return True
                 except Exception as e:
                     if logger is not None:
-                        logger.info(f"Scraper {scraper.name} failed: {e}")
+                        logger.info(f"\tScraper {scraper.name} failed: {e}")
 
     async def close(self):
-        for scrapers in self.sorted_scrapers:
-            for scraper in scrapers:
-                if "session" in scraper.kwargs:
-                    await scraper.kwargs["session"].close()
+        for scraper in self.scrapers:
+            if "session" in scraper.kwargs:
+                await scraper.kwargs["session"].close()

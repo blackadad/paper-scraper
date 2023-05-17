@@ -3,7 +3,7 @@ import re
 import pybtex
 from pybtex.bibtex import BibTeXEngine
 from .headers import get_header
-from .utils import ThrottledClientSession, check_pdf
+from .utils import ThrottledClientSession
 from .scraper import Scraper
 import asyncio
 import re
@@ -236,7 +236,7 @@ def default_scraper():
     scraper.register_scraper(pubmed_scraper, attach_session=True)
     scraper.register_scraper(openaccess_scraper, attach_session=True, priority=5)
     scraper.register_scraper(doi_scraper, attach_session=True, priority=0)
-    scraper.register_scraper(local_scraper, attach_session=False, priority=999)
+    scraper.register_scraper(local_scraper, attach_session=False, priority=11)
     return scraper
 
 
@@ -258,11 +258,11 @@ async def a_search_papers(
     if logger is None:
         logger = logging.getLogger("paper-scraper")
         logger.setLevel(logging.ERROR)
-    if verbose:
-        logger.setLevel(logging.DEBUG)
-        ch = logging.StreamHandler()
-        ch.setFormatter(CustomFormatter())
-        logger.addHandler(ch)
+        if verbose:
+            logger.setLevel(logging.DEBUG)
+            ch = logging.StreamHandler()
+            ch.setFormatter(CustomFormatter())
+            logger.addHandler(ch)
     endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
     params = {
         "query": query,
@@ -298,7 +298,6 @@ async def a_search_papers(
             ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
         except KeyError:
             pass
-    have_key = "x-api-key" in ssheader
     async with ThrottledClientSession(
         rate_limit=90 if "x-api-key" in ssheader else 15 / 60, headers=ssheader
     ) as ss_session:
@@ -320,17 +319,9 @@ async def a_search_papers(
                     return None, None
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
                 success = await scraper.scrape(paper, path, i=i, logger=logger)
-                if not success:
-                    logger.debug(
-                        "\tfailed after trying "
-                        + str(paper["externalIds"])
-                        + str(paper["openAccessPdf"])
-                        + " sources"
-                    )
-                else:
+                if success:
                     bibtex = paper["citationStyles"]["bibtex"]
                     key = bibtex.split("{")[1].split(",")[0]
-                    logger.debug("\tsucceeded - key: " + key)
                     return path, dict(
                         citation=format_bibtex(bibtex, key),
                         key=key,
@@ -338,6 +329,7 @@ async def a_search_papers(
                         tldr=paper["tldr"],
                         year=paper["year"],
                         url=paper["url"],
+                        paperId=paper["paperId"],
                     )
                 return None, None
 
@@ -357,7 +349,6 @@ async def a_search_papers(
                 # if we have enough, stop
                 if len(paths) >= limit:
                     break
-    await scraper.close()
     if len(paths) < limit and _offset + _limit < data["total"]:
         paths.update(
             await a_search_papers(
@@ -368,8 +359,13 @@ async def a_search_papers(
                 _limit=_limit,
                 _offset=_offset + _limit,
                 logger=logger,
+                year=year,
+                verbose=verbose,
+                scraper=scraper,
             )
         )
+    if _offset == 0:
+        await scraper.close()
     return paths
 
 

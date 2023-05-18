@@ -347,7 +347,7 @@ async def a_search_papers(
                 return None, None
 
             # batch them, since since we may reach desired limit before all done
-            batch_size = 10
+            batch_size = 6
             for i in range(0, len(papers), batch_size):
                 batch = papers[i : i + batch_size]
                 results = await asyncio.gather(

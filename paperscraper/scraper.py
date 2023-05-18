@@ -26,11 +26,13 @@ class Scraper:
     ):
         kwargs = {}
         if name is None:
-            name = func.__name__
+            name = func.__name__.replace("_scraper", "")
         if attach_session:
             sess = ThrottledClientSession(rate_limit=15 / 60, headers=get_header())
             kwargs["session"] = sess
         self.scrapers.append(ScraperFunction(func, priority, kwargs, name, check))
+        # sort scrapers by priority
+        self.scrapers.sort(key=lambda x: x.priority, reverse=True)
         # reshape sorted scrapers
         sorted_scrapers = []
         for priority in sorted(set([s.priority for s in self.scrapers])):
@@ -46,6 +48,7 @@ class Scraper:
             i (int): An index to shift call order to load balance.
         """
         # want highest priority first
+        scrape_result = {s.name: "none" for s in self.scrapers}
         for scrapers in self.sorted_scrapers[::-1]:
             for j in range(len(scrapers)):
                 j = (j + i) % len(scrapers)
@@ -53,18 +56,21 @@ class Scraper:
                 try:
                     result = await scraper.function(paper, path, **scraper.kwargs)
                     if result and (not scraper.check_pdf or check_pdf(path)):
-                        if self.callback is not None:
-                            await self.callback(paper['paperId'], scraper.name, True)
+                        scrape_result[scraper.name] = "success"
                         if logger is not None:
                             logger.debug(
                                 f"\tsucceeded - key: {paper['paperId']} scraper: {scraper.name}"
                             )
+                        if self.callback is not None:
+                            await self.callback(paper["title"], scrape_result)
                         return True
                 except Exception as e:
                     if logger is not None:
                         logger.info(f"\tScraper {scraper.name} failed: {e}")
-                if self.callback is not None:
-                    await self.callback(paper['paperId'], scraper.name, False)
+                scrape_result[scraper.name] = "failed"
+            if self.callback is not None:
+                await self.callback(paper["title"], scrape_result)
+
     async def close(self):
         for scraper in self.scrapers:
             if "session" in scraper.kwargs:

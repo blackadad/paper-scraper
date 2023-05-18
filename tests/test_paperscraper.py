@@ -188,3 +188,17 @@ class Test8(IsolatedAsyncioTestCase):
         scraper = paperscraper.default_scraper()
         assert len(scraper.scrapers) == sum([len(s) for s in scraper.sorted_scrapers])
         await scraper.close()
+
+
+class Test9(IsolatedAsyncioTestCase):
+    async def test_scraper_callback(self):
+        # make sure default scraper doesn't duplicate scrapers
+        scraper = paperscraper.default_scraper()
+
+        async def callback(paper, result):
+            assert len(result) > 5
+            print(result)
+
+        scraper.callback = callback
+        papers = await paperscraper.a_search_papers("test", limit=1, scraper=scraper)
+        await scraper.close()

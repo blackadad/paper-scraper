@@ -185,7 +185,7 @@ async def doi_to_pdf(doi, path, session):
             f.write(await r.read())
 
 
-async def arxiv_scrape(paper, path, session):
+async def arxiv_scraper(paper, path, session):
     if "ArXiv" not in paper["externalIds"]:
         return False
     arxiv_id = paper["externalIds"]["ArXiv"]
@@ -231,7 +231,7 @@ async def local_scraper(paper, path):
 
 def default_scraper():
     scraper = Scraper()
-    scraper.register_scraper(arxiv_scrape, attach_session=True)
+    scraper.register_scraper(arxiv_scraper, attach_session=True)
     scraper.register_scraper(pmc_scraper, attach_session=True)
     scraper.register_scraper(pubmed_scraper, attach_session=True)
     scraper.register_scraper(openaccess_scraper, attach_session=True, priority=5)
@@ -276,6 +276,7 @@ async def a_search_papers(
                 "isOpenAccess",
                 "influentialCitationCount",
                 "tldr",
+                "title",
             ]
         ),
         "limit": _limit,

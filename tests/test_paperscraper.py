@@ -172,7 +172,10 @@ class Test5(IsolatedAsyncioTestCase):
         query = "covid vaccination"
         papers = await paperscraper.a_search_papers(query, limit=1, year="2019-2023")
         assert len(papers) == 1
-
+        papers = await paperscraper.a_search_papers(query, limit=1, year=". 2021-2023")
+        assert len(papers) == 1
+        papers = await paperscraper.a_search_papers(query, limit=1, year="2023-2022")
+        assert len(papers) == 1
 
 class Test6(IsolatedAsyncioTestCase):
     async def test_verbose(self):

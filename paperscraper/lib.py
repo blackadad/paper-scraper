@@ -284,7 +284,18 @@ async def a_search_papers(
         "offset": _offset,
     }
     if year is not None:
-        params["year"] = year.strip()
+        # need to really make sure year is correct
+        year = year.strip()
+        if '-' in year:
+            # make sure start/end are valid
+            try:
+                start, end = year.split('-')
+                if int(start) < int(end):
+                    params["year"] = year
+            except ValueError:
+                pass
+        if 'year' not in params:
+            logger.warning(f"Could not parse year {year}")
     if _paths is None:
         paths = {}
     else:

@@ -125,6 +125,16 @@ class Test(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
+    async def test_link3_to_pdf(self):
+        link = "https://www.medrxiv.org/content/medrxiv/early/2020/03/23/2020.03.20.20040055.full.pdf"
+        path = "test.pdf"
+        async with ThrottledClientSession(
+            headers=get_header(), rate_limit=15 / 60
+        ) as session:
+            await paperscraper.link_to_pdf(link, path, session)
+        assert paperscraper.check_pdf(path)
+        os.remove(path) 
+
     async def test_doi_to_pdf_open(self):
         doi = "10.1002/elsc.201300021"
         path = "test.pdf"

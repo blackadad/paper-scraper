@@ -88,9 +88,12 @@ async def link_to_pdf(url, path, session):
     async with session.get(url, allow_redirects=True) as r:
         if r.status != 200:
             raise RuntimeError(f"Unable to download {url}, status code {r.status}")
+        print(r.headers)
+        print(url)
         if "pdf" in r.headers["Content-Type"]:
             with open(path, "wb") as f:
                 f.write(await r.read())
+            return
         else:
             # try to find a pdf link
             html_text = await r.text()

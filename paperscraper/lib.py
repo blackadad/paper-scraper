@@ -263,6 +263,7 @@ async def a_search_papers(
     year=None,
     verbose=False,
     scraper=None,
+    batch_size=10,
 ):
     if not os.path.exists(pdir):
         os.mkdir(pdir)
@@ -338,8 +339,6 @@ async def a_search_papers(
             )
 
             async def process_paper(paper, i):
-                if len(paths) >= limit:
-                    return None, None
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
                 success = await scraper.scrape(paper, path, i=i, logger=logger)
                 if success:
@@ -357,7 +356,6 @@ async def a_search_papers(
                 return None, None
 
             # batch them, since since we may reach desired limit before all done
-            batch_size = 6
             for i in range(0, len(papers), batch_size):
                 batch = papers[i : i + batch_size]
                 results = await asyncio.gather(
@@ -366,9 +364,6 @@ async def a_search_papers(
                 for path, info in results:
                     if path is not None:
                         paths[path] = info
-                    # if we have enough, stop
-                    if len(paths) >= limit:
-                        break
                 # if we have enough, stop
                 if len(paths) >= limit:
                     break
@@ -385,6 +380,7 @@ async def a_search_papers(
                 year=year,
                 verbose=verbose,
                 scraper=scraper,
+                batch_size=batch_size,
             )
         )
     if _offset == 0:
@@ -404,6 +400,7 @@ def search_papers(
     year=None,
     verbose=False,
     scraper=None,
+    batch_size=10,
 ):
     # special case for jupyter notebooks
     if "get_ipython" in globals() or "google.colab" in sys.modules:
@@ -428,5 +425,6 @@ def search_papers(
             year=year,
             verbose=verbose,
             scraper=scraper,
+            batch_size=batch_size
         )
     )

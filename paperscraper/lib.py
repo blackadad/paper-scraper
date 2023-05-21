@@ -16,11 +16,13 @@ def clean_upbibtex(bibtex):
     # WTF Semantic Scholar?
     mapping = {
         "None": "article",
+        "Article": "article",
         "JournalArticle": "article",
         "Review": "article",
         "Book": "book",
         "BookSection": "inbook",
         "ConferencePaper": "inproceedings",
+        "Conference": "inproceedings",
         "Dataset": "misc",
         "Dissertation": "phdthesis",
         "Journal": "article",
@@ -34,11 +36,19 @@ def clean_upbibtex(bibtex):
 
     if "@None" in bibtex:
         return bibtex.replace("@None", "@article")
-    bib_type = re.findall(r"@\['(.*)'\]", bibtex)[0]
+    # new format check
+    match = re.findall(r"@\['(.*)'\]", bibtex)
+    if len(match) == 0:
+        match = re.findall(r"@(.*)\{", bibtex)
+        bib_type = match[0]
+        current = f"@{match[0]}"
+    else:
+        bib_type = match[0]
+        current = f"@['{bib_type}']"
     for k, v in mapping.items():
         # can have multiple
         if k in bib_type:
-            bibtex = bibtex.replace(f"@['{bib_type}']", f"@{v}")
+            bibtex = bibtex.replace(current, f"@{v}")
             break
     return bibtex
 
@@ -51,7 +61,7 @@ def format_bibtex(bibtex, key):
     style = unsrtalpha.Style()
     try:
         bd = parse_string(clean_upbibtex(bibtex), "bibtex")
-    except Exception:
+    except Exception as e:
         return "Ref " + key
     try:
         entry = style.format_entry(label="1", entry=bd.entries[key])
@@ -286,15 +296,15 @@ async def a_search_papers(
     if year is not None:
         # need to really make sure year is correct
         year = year.strip()
-        if '-' in year:
+        if "-" in year:
             # make sure start/end are valid
             try:
-                start, end = year.split('-')
+                start, end = year.split("-")
                 if int(start) < int(end):
                     params["year"] = year
             except ValueError:
                 pass
-        if 'year' not in params:
+        if "year" not in params:
             logger.warning(f"Could not parse year {year}")
     if _paths is None:
         paths = {}

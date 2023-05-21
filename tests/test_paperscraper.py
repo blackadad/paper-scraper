@@ -3,6 +3,8 @@ import os
 from unittest import IsolatedAsyncioTestCase
 from paperscraper.utils import ThrottledClientSession
 from paperscraper.headers import get_header
+from paperscraper.lib import clean_upbibtex
+from pybtex.database import parse_string
 
 
 def test_format_bibtex():
@@ -34,7 +36,7 @@ def test_format_bibtex():
         }
     """
 
-    paperscraper.format_bibtex(bibtex2, "Kianfar2019ComparisonAA")
+    parse_string(clean_upbibtex(bibtex2), "bibtex")
 
     bibtex3 = """
     @None{Kianfar2019ComparisonAA,
@@ -48,7 +50,7 @@ def test_format_bibtex():
     }
     """
 
-    paperscraper.format_bibtex(bibtex3, "Kianfar2019ComparisonAA")
+    parse_string(clean_upbibtex(bibtex3), "bibtex")
 
     bibtex4 = """
     @['Review', 'JournalArticle', 'Some other stuff']{Kianfar2019ComparisonAA,
@@ -62,7 +64,17 @@ def test_format_bibtex():
     }
     """
 
-    paperscraper.format_bibtex(bibtex3, "Kianfar2019ComparisonAA")
+    parse_string(clean_upbibtex(bibtex4), "bibtex")
+
+    bibtex5 = """
+    @Review{Escobar2020BCGVP,
+        author = {Luis E. Escobar and A. Molina-Cruz and C. Barillas-Mury},
+        title = {BCG Vaccine Protection from Severe Coronavirus Disease 2019 (COVID19)},
+        year = {2020}
+    }
+    """
+
+    parse_string(clean_upbibtex(bibtex5), "bibtex")
 
 
 class Test(IsolatedAsyncioTestCase):
@@ -133,7 +145,7 @@ class Test(IsolatedAsyncioTestCase):
         ) as session:
             await paperscraper.link_to_pdf(link, path, session)
         assert paperscraper.check_pdf(path)
-        os.remove(path) 
+        os.remove(path)
 
     async def test_doi_to_pdf_open(self):
         doi = "10.1002/elsc.201300021"
@@ -176,6 +188,7 @@ class Test5(IsolatedAsyncioTestCase):
         assert len(papers) == 1
         papers = await paperscraper.a_search_papers(query, limit=1, year="2023-2022")
         assert len(papers) == 1
+
 
 class Test6(IsolatedAsyncioTestCase):
     async def test_verbose(self):

@@ -22,13 +22,19 @@ class Scraper:
         self.callback = callback
 
     def register_scraper(
-        self, func, attach_session=False, priority=10, name=None, check=True
+        self,
+        func,
+        attach_session=False,
+        priority=10,
+        name=None,
+        check=True,
+        rate_limit=15 / 60,
     ):
         kwargs = {}
         if name is None:
             name = func.__name__.replace("_scraper", "")
         if attach_session:
-            sess = ThrottledClientSession(rate_limit=15 / 60, headers=get_header())
+            sess = ThrottledClientSession(rate_limit=rate_limit, headers=get_header())
             kwargs["session"] = sess
         self.scrapers.append(ScraperFunction(func, priority, kwargs, name, check))
         # sort scrapers by priority

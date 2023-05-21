@@ -242,10 +242,12 @@ async def local_scraper(paper, path):
 
 def default_scraper():
     scraper = Scraper()
-    scraper.register_scraper(arxiv_scraper, attach_session=True)
-    scraper.register_scraper(pmc_scraper, attach_session=True)
-    scraper.register_scraper(pubmed_scraper, attach_session=True)
-    scraper.register_scraper(openaccess_scraper, attach_session=True, priority=5)
+    scraper.register_scraper(arxiv_scraper, attach_session=True, rate_limit=30 / 60)
+    scraper.register_scraper(pmc_scraper, rate_limit=30 / 60, attach_session=True)
+    scraper.register_scraper(pubmed_scraper, rate_limit=30 / 60, attach_session=True)
+    scraper.register_scraper(
+        openaccess_scraper, attach_session=True, priority=5, rate_limit=45 / 60
+    )
     scraper.register_scraper(doi_scraper, attach_session=True, priority=0)
     scraper.register_scraper(local_scraper, attach_session=False, priority=11)
     return scraper
@@ -425,6 +427,6 @@ def search_papers(
             year=year,
             verbose=verbose,
             scraper=scraper,
-            batch_size=batch_size
+            batch_size=batch_size,
         )
     )

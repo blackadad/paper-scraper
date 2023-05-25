@@ -333,7 +333,7 @@ async def a_search_papers(
                     f"Error searching papers: {response.status} {response.reason} {await response.text()}"
                 )
             data = await response.json()
-            if "data" not in papers:
+            if "data" not in data:
                 return paths
             papers = data["data"]
             # resort based on influentialCitationCount - is this good?

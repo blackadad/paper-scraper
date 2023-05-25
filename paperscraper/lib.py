@@ -333,6 +333,8 @@ async def a_search_papers(
                     f"Error searching papers: {response.status} {response.reason} {await response.text()}"
                 )
             data = await response.json()
+            if "data" not in papers:
+                return paths
             papers = data["data"]
             # resort based on influentialCitationCount - is this good?
             papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)

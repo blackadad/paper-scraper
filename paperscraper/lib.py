@@ -289,6 +289,7 @@ async def a_search_papers(
                 "year",
                 "isOpenAccess",
                 "influentialCitationCount",
+                "citationCount",
                 "tldr",
                 "title",
             ]
@@ -356,6 +357,11 @@ async def a_search_papers(
                         year=paper["year"],
                         url=paper["url"],
                         paperId=paper["paperId"],
+                        doi=paper["externalIds"]["DOI"]
+                        if "DOI" in paper["externalIds"]
+                        else None,
+                        citationCount=paper["citationCount"],
+                        title=paper["title"],
                     )
                 return None, None
 

@@ -279,7 +279,8 @@ async def a_search_papers(
             logger.addHandler(ch)
     endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
     params = {
-        "query": query,
+        # OMG took so long to learn this detail
+        "query": query.replace("-", " "),
         "fields": ",".join(
             [
                 "citationStyles",

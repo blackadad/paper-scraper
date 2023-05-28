@@ -95,11 +95,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
         for retries in range(0, 5):
             await self._allow()
             response = await super()._request(*args, **kwargs)
-            if (
-                response
-                and response.status == 429
-                and response.headers["x-amzn-ErrorType"] == "TooManyRequestsException"
-            ):
+            if response and response.status == 429:
                 # cloudfront paid service limit; amazon says to use exponential backoff and retry
                 # they give the below formula as an example.
                 await asyncio.sleep((2**retries) * 0.1)

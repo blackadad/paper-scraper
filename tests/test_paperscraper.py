@@ -79,7 +79,7 @@ def test_format_bibtex():
 
 class Test(IsolatedAsyncioTestCase):
     async def test_arxiv_to_pdf(self):
-        arxiv_id = "1703.10593"
+        arxiv_id = "1706.03762"
         path = "test.pdf"
         async with ThrottledClientSession(
             headers=get_header(), rate_limit=15 / 60

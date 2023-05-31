@@ -353,7 +353,7 @@ async def a_search_papers(
                     return path, dict(
                         citation=format_bibtex(bibtex, key),
                         key=key,
-                        bibtex=bibtex,
+                        bibtex=clean_upbibtex(bibtex),
                         tldr=paper["tldr"],
                         year=paper["year"],
                         url=paper["url"],

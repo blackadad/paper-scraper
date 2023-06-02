@@ -305,7 +305,7 @@ async def a_search_papers(
             # make sure start/end are valid
             try:
                 start, end = year.split("-")
-                if int(start) < int(end):
+                if int(start) <= int(end):
                     params["year"] = year
             except ValueError:
                 pass

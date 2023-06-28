@@ -228,3 +228,12 @@ class Test9(IsolatedAsyncioTestCase):
         scraper.callback = callback
         papers = await paperscraper.a_search_papers("test", limit=1, scraper=scraper)
         await scraper.close()
+
+
+class Test10(IsolatedAsyncioTestCase):
+    async def test_scraper_paper_search(self):
+        # make sure default scraper doesn't duplicate scrapers
+        papers = await paperscraper.a_search_papers(
+            "649def34f8be52c8b66281af98ae884c09aef38b", limit=1, search_type="paper"
+        )
+        assert len(papers) >= 1

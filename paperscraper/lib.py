@@ -266,6 +266,7 @@ async def a_search_papers(
     verbose=False,
     scraper=None,
     batch_size=10,
+    search_type="default",
 ):
     if not os.path.exists(pdir):
         os.mkdir(pdir)
@@ -277,10 +278,7 @@ async def a_search_papers(
             ch = logging.StreamHandler()
             ch.setFormatter(CustomFormatter())
             logger.addHandler(ch)
-    endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
     params = {
-        # OMG took so long to learn this detail
-        "query": query.replace("-", " "),
         "fields": ",".join(
             [
                 "citationStyles",
@@ -291,14 +289,21 @@ async def a_search_papers(
                 "isOpenAccess",
                 "influentialCitationCount",
                 "citationCount",
-                "tldr",
                 "title",
             ]
         ),
-        "limit": _limit,
-        "offset": _offset,
     }
-    if year is not None:
+    if search_type == "default":
+        endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
+        params["query"] = query.replace("-", " ")
+        params["offset"] = _offset
+        params["limit"] = _limit
+    elif search_type == "paper":
+        endpoint = "https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{paper_id}".format(
+            paper_id=query
+        )
+        params["limit"] = _limit
+    if year is not None and search_type == "default":
         # need to really make sure year is correct
         year = year.strip()
         if "-" in year:
@@ -335,14 +340,18 @@ async def a_search_papers(
                     f"Error searching papers: {response.status} {response.reason} {await response.text()}"
                 )
             data = await response.json()
-            if "data" not in data:
+            field = "data"
+            if search_type == "paper":
+                field = "recommendedPapers"
+            if field not in data:
                 return paths
-            papers = data["data"]
+            papers = data[field]
             # resort based on influentialCitationCount - is this good?
             papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
-            logger.info(
-                f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
-            )
+            if search_type == "default":
+                logger.info(
+                    f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
+                )
 
             async def process_paper(paper, i):
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
@@ -354,7 +363,7 @@ async def a_search_papers(
                         citation=format_bibtex(bibtex, key),
                         key=key,
                         bibtex=clean_upbibtex(bibtex),
-                        tldr=paper["tldr"],
+                        tldr=paper["tldr"] if "tldr" in paper else None,
                         year=paper["year"],
                         url=paper["url"],
                         paperId=paper["paperId"],
@@ -378,7 +387,11 @@ async def a_search_papers(
                 # if we have enough, stop
                 if len(paths) >= limit:
                     break
-    if len(paths) < limit and _offset + _limit < data["total"]:
+    if (
+        search_type == "default"
+        and len(paths) < limit
+        and _offset + _limit < data["total"]
+    ):
         paths.update(
             await a_search_papers(
                 query,
@@ -412,6 +425,7 @@ def search_papers(
     verbose=False,
     scraper=None,
     batch_size=10,
+    search_type="default",
 ):
     # special case for jupyter notebooks
     if "get_ipython" in globals() or "google.colab" in sys.modules:
@@ -437,5 +451,6 @@ def search_papers(
             verbose=verbose,
             scraper=scraper,
             batch_size=batch_size,
+            search_type=search_type,
         )
     )

@@ -303,6 +303,11 @@ async def a_search_papers(
             paper_id=query
         )
         params["limit"] = _limit
+    elif search_type == "doi":
+        endpoint = "https://api.semanticscholar.org/graph/v1/paper/DOI:{doi}".format(
+            doi=query
+        )
+
     if year is not None and search_type == "default":
         # need to really make sure year is correct
         year = year.strip()
@@ -343,6 +348,8 @@ async def a_search_papers(
             field = "data"
             if search_type == "paper":
                 field = "recommendedPapers"
+            elif search_type == "doi":
+                data = {"data": [data]}
             if field not in data:
                 return paths
             papers = data[field]

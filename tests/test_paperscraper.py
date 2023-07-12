@@ -213,7 +213,6 @@ class Test8(IsolatedAsyncioTestCase):
         # make sure default scraper doesn't duplicate scrapers
         scraper = paperscraper.default_scraper()
         assert len(scraper.scrapers) == sum([len(s) for s in scraper.sorted_scrapers])
-        await scraper.close()
 
 
 class Test9(IsolatedAsyncioTestCase):
@@ -237,3 +236,11 @@ class Test10(IsolatedAsyncioTestCase):
             "649def34f8be52c8b66281af98ae884c09aef38b", limit=1, search_type="paper"
         )
         assert len(papers) >= 1
+
+
+class Test11(IsolatedAsyncioTestCase):
+    async def test_scraper_doi_search(self):
+        papers = await paperscraper.a_search_papers(
+            "10.1016/j.ccell.2021.11.002", limit=1, search_type="doi"
+        )
+        assert len(papers) == 1

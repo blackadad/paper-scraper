@@ -10,6 +10,7 @@ import re
 import sys
 import logging
 from .log_formatter import CustomFormatter
+from .exceptions import DOINotFoundError
 
 
 def clean_upbibtex(bibtex):
@@ -307,6 +308,16 @@ async def a_search_papers(
         endpoint = "https://api.semanticscholar.org/graph/v1/paper/DOI:{doi}".format(
             doi=query
         )
+    elif search_type == "future_citations":
+        endpoint = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}?fields=citations".format(
+            paper_id=query
+        )
+        params["limit"] = _limit
+    elif search_type == "past_references":
+        endpoint = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}?fields=references".format(
+            paper_id=query
+        )
+        params["limit"] = _limit
 
     if year is not None and search_type == "default":
         # need to really make sure year is correct
@@ -341,6 +352,8 @@ async def a_search_papers(
     ) as ss_session:
         async with ss_session.get(url=endpoint, params=params) as response:
             if response.status != 200:
+                if response.status == 404 and search_type == "doi":
+                    raise DOINotFoundError(f"DOI {query} not found")
                 raise RuntimeError(
                     f"Error searching papers: {response.status} {response.reason} {await response.text()}"
                 )

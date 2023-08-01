@@ -5,6 +5,7 @@ from paperscraper.utils import ThrottledClientSession
 from paperscraper.headers import get_header
 from paperscraper.lib import clean_upbibtex
 from pybtex.database import parse_string
+from paperscraper.exceptions import DOINotFoundError
 
 
 def test_format_bibtex():
@@ -244,3 +245,35 @@ class Test11(IsolatedAsyncioTestCase):
             "10.1016/j.ccell.2021.11.002", limit=1, search_type="doi"
         )
         assert len(papers) == 1
+
+
+class Test12(IsolatedAsyncioTestCase):
+    async def test_future_citation_search(self):
+        # make sure default scraper doesn't duplicate scrapers
+        papers = await paperscraper.a_search_papers(
+            "649def34f8be52c8b66281af98ae884c09aef38b",
+            limit=1,
+            search_type="future_citations",
+        )
+        assert len(papers) >= 1
+
+
+class Test13(IsolatedAsyncioTestCase):
+    async def test_past_references_search(self):
+        # make sure default scraper doesn't duplicate scrapers
+        papers = await paperscraper.a_search_papers(
+            "649def34f8be52c8b66281af98ae884c09aef38b",
+            limit=1,
+            search_type="past_references",
+        )
+        assert len(papers) >= 1
+
+
+class Test14(IsolatedAsyncioTestCase):
+    async def test_scraper_doi_search(self):
+        try:
+            papers = await paperscraper.a_search_papers(
+                "10.23919/eusipco55093.2022.9909972", limit=1, search_type="doi"
+            )
+        except Exception as e:
+            assert isinstance(e, DOINotFoundError)

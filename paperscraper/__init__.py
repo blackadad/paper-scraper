@@ -12,3 +12,4 @@ from .lib import (
 )
 from .scraper import Scraper
 from .utils import check_pdf
+from .exceptions import DOINotFoundError

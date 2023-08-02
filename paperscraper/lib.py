@@ -12,7 +12,6 @@ import logging
 from .log_formatter import CustomFormatter
 from .exceptions import DOINotFoundError
 
-
 def clean_upbibtex(bibtex):
     # WTF Semantic Scholar?
     mapping = {
@@ -309,12 +308,12 @@ async def a_search_papers(
             doi=query
         )
     elif search_type == "future_citations":
-        endpoint = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}?fields=citations".format(
+        endpoint = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}/citations".format(
             paper_id=query
         )
         params["limit"] = _limit
     elif search_type == "past_references":
-        endpoint = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}?fields=references".format(
+        endpoint = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}/references".format(
             paper_id=query
         )
         params["limit"] = _limit
@@ -366,6 +365,10 @@ async def a_search_papers(
             if field not in data:
                 return paths
             papers = data[field]
+            if search_type == 'future_citations':
+                papers = [p['citingPaper'] for p in papers]
+            if search_type == 'past_references':
+                papers = [p['citedPaper'] for p in papers]
             # resort based on influentialCitationCount - is this good?
             papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
             if search_type == "default":

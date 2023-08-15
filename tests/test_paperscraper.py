@@ -11,6 +11,18 @@ from paperscraper.exceptions import DOINotFoundError
 class Test0(IsolatedAsyncioTestCase):
     async def test_google_search_papers(self):
         query = "molecular dynamics"
+        papers = await paperscraper.a_search_papers(
+            query, search_type="google", year="2019-2023"
+        )
+        assert len(papers) >= 1
+
+        query = "molecular dynamics"
+        papers = await paperscraper.a_search_papers(
+            query, search_type="google", year="2020"
+        )
+        assert len(papers) >= 1
+
+        query = "covid vaccination"
         papers = await paperscraper.a_search_papers(query, search_type="google")
         assert len(papers) >= 1
 

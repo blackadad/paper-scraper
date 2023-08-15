@@ -354,6 +354,28 @@ async def a_search_papers(
                 pass
         if "year" not in params:
             logger.warning(f"Could not parse year {year}")
+
+    if year is not None and search_type == "google":
+        # need to really make sure year is correct
+        year = year.strip()
+        if "-" in year:
+            # make sure start/end are valid
+            try:
+                start, end = year.split("-")
+                if int(start) <= int(end):
+                    google_params["as_ylo"] = start
+                    google_params["as_yhi"] = end
+            except ValueError:
+                pass
+        else:
+            try:
+                google_params["as_ylo"] = year
+                google_params["as_yhi"] = year
+            except ValueError:
+                pass
+        if "year" not in params:
+            logger.warning(f"Could not parse year {year}")
+
     if _paths is None:
         paths = {}
     else:
@@ -395,26 +417,38 @@ async def a_search_papers(
 
                 data = {"data": []}
 
-                async def google_fetch(session, url, params, title, year):
-                    local_params = params.copy()
-                    local_params["query"] = title.replace("-", " ")
-                    local_params["year"] = year
-                    async with session.get(url=url, params=local_params) as response:
+                async def ss_fetch_google_results(session, url, params, title, year):
+                    local_p = params.copy()
+                    local_p["query"] = title.replace("-", " ")
+                    local_p["year"] = year
+                    async with session.get(url=url, params=local_p) as response:
                         if response.status != 200:
                             raise RuntimeError(
                                 f"Error searching papers: {response.status} {response.reason} {await response.text()}"
                             )
                         response = await response.json()
+                        if "data" not in response:
+                            if response["total"] == 0:
+                                logger.info(f"{title}{year} not found. try just year")
+                                del local_p["year"]
+                                async with session.get(url=url, params=local_p) as resp:
+                                    if resp.status != 200:
+                                        raise RuntimeError(f"Error searching papers")
+                                    response = await resp.json()
+                                    if "data" not in response:
+                                        return None
                         return response["data"][0]
 
                 async with ThrottledClientSession(
                     rate_limit=30, headers=ssheader
                 ) as sess:
                     tasks = [
-                        google_fetch(sess, endpoint, params, title, year)
+                        ss_fetch_google_results(sess, endpoint, params, title, year)
                         for title, year in zip(titles, years)
                     ]
-                    data["data"] = await asyncio.gather(*tasks, return_exceptions=True)
+                    data["data"] = await asyncio.gather(*tasks)
+                    # remove None from data
+                    data["data"] = [d for d in data["data"] if d is not None]
 
                 data["total"] = len(data["data"])
             field = "data"

@@ -392,7 +392,7 @@ async def a_search_papers(
         except KeyError:
             pass
     async with ThrottledClientSession(
-        rate_limit=90 if "x-api-key" in ssheader else 15 / 60, headers=ssheader
+        rate_limit=90 if "x-api-key" in ssheader or search_type == "google" else 15 / 60, headers=ssheader
     ) as ss_session:
         async with ss_session.get(
             url=google_endpoint if search_type == "google" else endpoint,

@@ -12,6 +12,7 @@ import logging
 from .log_formatter import CustomFormatter
 from .exceptions import DOINotFoundError
 
+
 def clean_upbibtex(bibtex):
     # WTF Semantic Scholar?
     mapping = {
@@ -112,15 +113,25 @@ async def link_to_pdf(url, path, session):
                 # try to find epdf link
                 if pdf_link is None:
                     raise RuntimeError(f"No PDF link found for {url}")
+                pdf_link = pdf_link.group(1)
             else:
                 # strip the epdf
                 pdf_link = epdf_link.group(1).replace("epdf", "pdf")
-    try:
-        if pdf_link is None:
-            raise RuntimeError(f"No PDF link found for {url}")
-        result = await link_to_pdf(pdf_link, path, session)
-    except TypeError:
-        raise RuntimeError(f"Malformed URL {pdf_link} -- {url}")
+
+            try:
+                async with session.get(pdf_link, allow_redirects=True) as r:
+                    if r.status != 200:
+                        raise RuntimeError(
+                            f"Unable to download {pdf_link}, status code {r.status}"
+                        )
+                    if "pdf" in r.headers["Content-Type"]:
+                        with open(path, "wb") as f:
+                            f.write(await r.read())
+                        return
+                    else:
+                        raise RuntimeError(f"No PDF found from {pdf_link}")
+            except TypeError:
+                raise RuntimeError(f"Malformed URL {pdf_link} -- {url}")
 
 
 async def find_pmc_pdf_link(pmc_id, session):
@@ -246,10 +257,10 @@ def default_scraper():
     scraper.register_scraper(pmc_scraper, rate_limit=30 / 60, attach_session=True)
     scraper.register_scraper(pubmed_scraper, rate_limit=30 / 60, attach_session=True)
     scraper.register_scraper(
-        openaccess_scraper, attach_session=True, priority=5, rate_limit=45 / 60
+        openaccess_scraper, attach_session=True, priority=11, rate_limit=45 / 60
     )
     scraper.register_scraper(doi_scraper, attach_session=True, priority=0)
-    scraper.register_scraper(local_scraper, attach_session=False, priority=11)
+    scraper.register_scraper(local_scraper, attach_session=False, priority=12)
     return scraper
 
 
@@ -317,6 +328,18 @@ async def a_search_papers(
             paper_id=query
         )
         params["limit"] = _limit
+    elif search_type == "google":
+        endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
+        params["limit"] = 1
+        google_endpoint = "https://serpapi.com/search.json"
+        google_params = {
+            "q": query.replace("-", " "),
+            "api_key": os.environ["SERPAPI_API_KEY"],
+            "engine": "google_scholar",
+            "num": 20,
+            "start": _offset,
+            # TODO - add offset and limit here
+        }
 
     if year is not None and search_type == "default":
         # need to really make sure year is correct
@@ -349,7 +372,10 @@ async def a_search_papers(
     async with ThrottledClientSession(
         rate_limit=90 if "x-api-key" in ssheader else 15 / 60, headers=ssheader
     ) as ss_session:
-        async with ss_session.get(url=endpoint, params=params) as response:
+        async with ss_session.get(
+            url=google_endpoint if search_type == "google" else endpoint,
+            params=google_params if search_type == "google" else params,
+        ) as response:
             if response.status != 200:
                 if response.status == 404 and search_type == "doi":
                     raise DOINotFoundError(f"DOI {query} not found")
@@ -357,6 +383,40 @@ async def a_search_papers(
                     f"Error searching papers: {response.status} {response.reason} {await response.text()}"
                 )
             data = await response.json()
+
+            if search_type == "google":
+                papers = data["organic_results"]
+                year_extract = re.compile(r"\b\d{4}\b")
+                titles = [p["title"] for p in papers]
+                years = [
+                    year_extract.findall(p["publication_info"]["summary"])[0]
+                    for p in papers
+                ]
+
+                data = {"data": []}
+
+                async def google_fetch(session, url, params, title, year):
+                    local_params = params.copy()
+                    local_params["query"] = title.replace("-", " ")
+                    local_params["year"] = year
+                    async with session.get(url=url, params=local_params) as response:
+                        if response.status != 200:
+                            raise RuntimeError(
+                                f"Error searching papers: {response.status} {response.reason} {await response.text()}"
+                            )
+                        response = await response.json()
+                        return response["data"][0]
+
+                async with ThrottledClientSession(
+                    rate_limit=30, headers=ssheader
+                ) as sess:
+                    tasks = [
+                        google_fetch(sess, endpoint, params, title, year)
+                        for title, year in zip(titles, years)
+                    ]
+                    data["data"] = await asyncio.gather(*tasks, return_exceptions=True)
+
+                data["total"] = len(data["data"])
             field = "data"
             if search_type == "paper":
                 field = "recommendedPapers"
@@ -365,13 +425,13 @@ async def a_search_papers(
             if field not in data:
                 return paths
             papers = data[field]
-            if search_type == 'future_citations':
-                papers = [p['citingPaper'] for p in papers]
-            if search_type == 'past_references':
-                papers = [p['citedPaper'] for p in papers]
+            if search_type == "future_citations":
+                papers = [p["citingPaper"] for p in papers]
+            if search_type == "past_references":
+                papers = [p["citedPaper"] for p in papers]
             # resort based on influentialCitationCount - is this good?
             papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
-            if search_type == "default":
+            if search_type in ["default", "google"]:
                 logger.info(
                     f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
                 )
@@ -411,7 +471,7 @@ async def a_search_papers(
                 if len(paths) >= limit:
                     break
     if (
-        search_type == "default"
+        search_type in ["default", "google"]
         and len(paths) < limit
         and _offset + _limit < data["total"]
     ):
@@ -422,12 +482,13 @@ async def a_search_papers(
                 pdir=pdir,
                 _paths=paths,
                 _limit=_limit,
-                _offset=_offset + _limit,
+                _offset=_offset + (20 if search_type == "google" else _limit),
                 logger=logger,
                 year=year,
                 verbose=verbose,
                 scraper=scraper,
                 batch_size=batch_size,
+                search_type=search_type,
             )
         )
     if _offset == 0:

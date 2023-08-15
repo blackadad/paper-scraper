@@ -8,6 +8,13 @@ from pybtex.database import parse_string
 from paperscraper.exceptions import DOINotFoundError
 
 
+class Test0(IsolatedAsyncioTestCase):
+    async def test_google_search_papers(self):
+        query = "molecular dynamics"
+        papers = await paperscraper.a_search_papers(query, search_type="google")
+        assert len(papers) >= 1
+
+
 def test_format_bibtex():
     bibtex = """
         @['JournalArticle']{Salomón-Ferrer2013RoutineMM,
@@ -128,7 +135,7 @@ class Test(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
-    async def test_link2_to_pdf(self):
+    async def test_link2_to_pdf_that_can_raise_403(self):
         link = "https://journals.sagepub.com/doi/pdf/10.1177/1087057113498418"
         path = "test.pdf"
         async with ThrottledClientSession(

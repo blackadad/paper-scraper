@@ -410,33 +410,35 @@ async def a_search_papers(
                 papers = data["organic_results"]
                 year_extract = re.compile(r"\b\d{4}\b")
                 titles = [p["title"] for p in papers]
-                years = [
-                    year_extract.findall(p["publication_info"]["summary"])[0]
-                    for p in papers
-                ]
+                years = [None for p in papers]
+                for i,p in enumerate(papers):
+                    match = year_extract.findall(p["publication_info"]["summary"])
+                    if len(match) > 0:
+                        years[i] = match[0]
 
                 data = {"data": []}
 
                 async def ss_fetch_google_results(session, url, params, title, year):
                     local_p = params.copy()
                     local_p["query"] = title.replace("-", " ")
-                    local_p["year"] = year
+                    if year is not None:
+                        local_p["year"] = year
                     async with session.get(url=url, params=local_p) as response:
                         if response.status != 200:
                             raise RuntimeError(
                                 f"Error searching papers: {response.status} {response.reason} {await response.text()}"
                             )
                         response = await response.json()
-                        if "data" not in response:
+                        if "data" not in response and year is not None:
                             if response["total"] == 0:
-                                logger.info(f"{title}{year} not found. try just year")
+                                logger.info(f"{title}{year} not found. try without year")
                                 del local_p["year"]
                                 async with session.get(url=url, params=local_p) as resp:
                                     if resp.status != 200:
                                         raise RuntimeError(f"Error searching papers")
                                     response = await resp.json()
-                                    if "data" not in response:
-                                        return None
+                        if "data" not in response:
+                            return None
                         return response["data"][0]
 
                 async with ThrottledClientSession(

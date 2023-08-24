@@ -333,7 +333,7 @@ async def a_search_papers(
         params["limit"] = 1
         google_endpoint = "https://serpapi.com/search.json"
         google_params = {
-            "q": query.replace("-", " "),
+            "q": query,
             "api_key": os.environ["SERPAPI_API_KEY"],
             "engine": "google_scholar",
             "num": 20,
@@ -373,7 +373,7 @@ async def a_search_papers(
                 google_params["as_yhi"] = year
             except ValueError:
                 pass
-        if "year" not in params:
+        if "as_ylo" not in google_params:
             logger.warning(f"Could not parse year {year}")
 
     if _paths is None:
@@ -407,6 +407,8 @@ async def a_search_papers(
             data = await response.json()
 
             if search_type == "google":
+                if not "organic_results" in data:
+                    return None, None
                 papers = data["organic_results"]
                 year_extract = re.compile(r"\b\d{4}\b")
                 titles = [p["title"] for p in papers]

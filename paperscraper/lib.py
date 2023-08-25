@@ -468,7 +468,8 @@ async def a_search_papers(
             if search_type == "past_references":
                 papers = [p["citedPaper"] for p in papers]
             # resort based on influentialCitationCount - is this good?
-            papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
+            if search_type == "default":
+                papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
             if search_type in ["default", "google"]:
                 logger.info(
                     f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"

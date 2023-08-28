@@ -408,7 +408,7 @@ async def a_search_papers(
 
             if search_type == "google":
                 if not "organic_results" in data:
-                    return None, None
+                    return paths
                 papers = data["organic_results"]
                 year_extract = re.compile(r"\b\d{4}\b")
                 titles = [p["title"] for p in papers]

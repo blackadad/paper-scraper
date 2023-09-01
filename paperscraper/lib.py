@@ -422,10 +422,11 @@ async def a_search_papers(
                 google_pdf_links = []
                 for i, p in enumerate(papers):
                     google_pdf_links.append(None)
-                    for res in p['resources']:
-                        if 'file_format' in res:
-                            if res['file_format'] == 'PDF':
-                                google_pdf_links[i] = res['link']
+                    if 'resources' in p:
+                        for res in p['resources']:
+                            if 'file_format' in res:
+                                if res['file_format'] == 'PDF':
+                                    google_pdf_links[i] = res['link']
 
                 data = {"data": []}
 

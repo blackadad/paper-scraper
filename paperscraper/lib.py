@@ -418,9 +418,19 @@ async def a_search_papers(
                     if len(match) > 0:
                         years[i] = match[0]
 
+                # get PDF resources
+                google_pdf_links = []
+                for i, p in enumerate(papers):
+                    google_pdf_links.append(None)
+                    for res in p['resources']:
+                        if 'file_format' in res:
+                            if res['file_format'] == 'PDF':
+                                google_pdf_links[i] = res['link']
+
                 data = {"data": []}
 
-                async def ss_fetch_google_results(session, url, params, title, year):
+                async def ss_fetch_google_results(session, url, params, title, year, pdf_link):
+                    # query Semantic Scholar for Google results
                     local_p = params.copy()
                     local_p["query"] = title.replace("-", " ")
                     if year is not None:
@@ -441,14 +451,17 @@ async def a_search_papers(
                                     response = await resp.json()
                         if "data" not in response:
                             return None
+                        if pdf_link is not None:
+                            # google scholar url takes precedence
+                            response["data"][0]['openAccessPdf'] = {'url': pdf_link}
                         return response["data"][0]
 
                 async with ThrottledClientSession(
                     rate_limit=30, headers=ssheader
                 ) as sess:
                     tasks = [
-                        ss_fetch_google_results(sess, endpoint, params, title, year)
-                        for title, year in zip(titles, years)
+                        ss_fetch_google_results(sess, endpoint, params, title, year, pdf_link)
+                        for title, year, pdf_link in zip(titles, years, google_pdf_links)
                     ]
                     data["data"] = await asyncio.gather(*tasks)
                     # remove None from data

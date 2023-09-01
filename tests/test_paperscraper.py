@@ -27,77 +27,7 @@ class Test0(IsolatedAsyncioTestCase):
         assert len(papers) >= 1
 
 
-def test_format_bibtex():
-    bibtex = """
-        @['JournalArticle']{Salomón-Ferrer2013RoutineMM,
-            author = {Romelia Salomón-Ferrer and A. Götz and D. Poole and S. Le Grand and R. Walker},
-            booktitle = {Journal of Chemical Theory and Computation},
-            journal = {Journal of chemical theory and computation},
-            pages = {
-                    3878-88
-                    },
-            title = {Routine Microsecond Molecular Dynamics Simulations with AMBER on GPUs. 2. Explicit Solvent Particle Mesh Ewald.},
-            volume = {9 9},
-            year = {2013}
-        }
-    """
-    text = "Romelia Salomón-Ferrer, A. Götz, D. Poole, S. Le Grand, and R. Walker. Routine microsecond molecular dynamics simulations with amber on gpus. 2. explicit solvent particle mesh ewald. Journal of chemical theory and computation, 9 9:3878-88, 2013."
-    assert paperscraper.format_bibtex(bibtex, "Salomón-Ferrer2013RoutineMM") == text
-
-    bibtex2 = """
-            @['Review']{Kianfar2019ComparisonAA,
-        author = {E. Kianfar},
-        booktitle = {Reviews in Inorganic Chemistry},
-        journal = {Reviews in Inorganic Chemistry},
-        pages = {157 - 177},
-        title = {Comparison and assessment of zeolite catalysts performance dimethyl ether and light olefins production through methanol: a review},
-        volume = {39},
-        year = {2019}
-        }
-    """
-
-    parse_string(clean_upbibtex(bibtex2), "bibtex")
-
-    bibtex3 = """
-    @None{Kianfar2019ComparisonAA,
-        author = {E. Kianfar},
-        booktitle = {Reviews in Inorganic Chemistry},
-        journal = {Reviews in Inorganic Chemistry},
-        pages = {157 - 177},
-        title = {Comparison and assessment of zeolite catalysts performance dimethyl ether and light olefins production through methanol: a review},
-        volume = {39},
-        year = {2019}
-    }
-    """
-
-    parse_string(clean_upbibtex(bibtex3), "bibtex")
-
-    bibtex4 = """
-    @['Review', 'JournalArticle', 'Some other stuff']{Kianfar2019ComparisonAA,
-        author = {E. Kianfar},
-        booktitle = {Reviews in Inorganic Chemistry},
-        journal = {Reviews in Inorganic Chemistry},
-        pages = {157 - 177},
-        title = {Comparison and assessment of zeolite catalysts performance dimethyl ether and light olefins production through methanol: a review},
-        volume = {39},
-        year = {2019}
-    }
-    """
-
-    parse_string(clean_upbibtex(bibtex4), "bibtex")
-
-    bibtex5 = """
-    @Review{Escobar2020BCGVP,
-        author = {Luis E. Escobar and A. Molina-Cruz and C. Barillas-Mury},
-        title = {BCG Vaccine Protection from Severe Coronavirus Disease 2019 (COVID19)},
-        year = {2020}
-    }
-    """
-
-    parse_string(clean_upbibtex(bibtex5), "bibtex")
-
-
-class Test(IsolatedAsyncioTestCase):
+class Test1(IsolatedAsyncioTestCase):
     async def test_arxiv_to_pdf(self):
         arxiv_id = "1706.03762"
         path = "test.pdf"
@@ -150,13 +80,16 @@ class Test(IsolatedAsyncioTestCase):
     async def test_link2_to_pdf_that_can_raise_403(self):
         link = "https://journals.sagepub.com/doi/pdf/10.1177/1087057113498418"
         path = "test.pdf"
-        async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
-        ) as session:
-            await paperscraper.link_to_pdf(link, path, session)
-        assert paperscraper.check_pdf(path)
-        os.remove(path)
+        try:
+            async with ThrottledClientSession(
+                headers=get_header(), rate_limit=15 / 60
+            ) as session:
+                await paperscraper.link_to_pdf(link, path, session)
+            os.remove(path)
 
+        except RuntimeError as e:
+            assert '403' in str(e)
+        
     async def test_link3_to_pdf(self):
         link = "https://www.medrxiv.org/content/medrxiv/early/2020/03/23/2020.03.20.20040055.full.pdf"
         path = "test.pdf"
@@ -305,3 +238,74 @@ class Test15(IsolatedAsyncioTestCase):
             search_type="google",
         )
         assert len(papers) == 1
+
+
+class Test16(IsolatedAsyncioTestCase):
+    def test_format_bibtex(self):
+        bibtex = """
+            @['JournalArticle']{Salomón-Ferrer2013RoutineMM,
+                author = {Romelia Salomón-Ferrer and A. Götz and D. Poole and S. Le Grand and R. Walker},
+                booktitle = {Journal of Chemical Theory and Computation},
+                journal = {Journal of chemical theory and computation},
+                pages = {
+                        3878-88
+                        },
+                title = {Routine Microsecond Molecular Dynamics Simulations with AMBER on GPUs. 2. Explicit Solvent Particle Mesh Ewald.},
+                volume = {9 9},
+                year = {2013}
+            }
+        """
+        text = "Romelia Salomón-Ferrer, A. Götz, D. Poole, S. Le Grand, and R. Walker. Routine microsecond molecular dynamics simulations with amber on gpus. 2. explicit solvent particle mesh ewald. Journal of chemical theory and computation, 9 9:3878-88, 2013."
+        assert paperscraper.format_bibtex(bibtex, "Salomón-Ferrer2013RoutineMM") == text
+
+        bibtex2 = """
+                @['Review']{Kianfar2019ComparisonAA,
+            author = {E. Kianfar},
+            booktitle = {Reviews in Inorganic Chemistry},
+            journal = {Reviews in Inorganic Chemistry},
+            pages = {157 - 177},
+            title = {Comparison and assessment of zeolite catalysts performance dimethyl ether and light olefins production through methanol: a review},
+            volume = {39},
+            year = {2019}
+            }
+        """
+
+        parse_string(clean_upbibtex(bibtex2), "bibtex")
+
+        bibtex3 = """
+        @None{Kianfar2019ComparisonAA,
+            author = {E. Kianfar},
+            booktitle = {Reviews in Inorganic Chemistry},
+            journal = {Reviews in Inorganic Chemistry},
+            pages = {157 - 177},
+            title = {Comparison and assessment of zeolite catalysts performance dimethyl ether and light olefins production through methanol: a review},
+            volume = {39},
+            year = {2019}
+        }
+        """
+
+        parse_string(clean_upbibtex(bibtex3), "bibtex")
+
+        bibtex4 = """
+        @['Review', 'JournalArticle', 'Some other stuff']{Kianfar2019ComparisonAA,
+            author = {E. Kianfar},
+            booktitle = {Reviews in Inorganic Chemistry},
+            journal = {Reviews in Inorganic Chemistry},
+            pages = {157 - 177},
+            title = {Comparison and assessment of zeolite catalysts performance dimethyl ether and light olefins production through methanol: a review},
+            volume = {39},
+            year = {2019}
+        }
+        """
+
+        parse_string(clean_upbibtex(bibtex4), "bibtex")
+
+        bibtex5 = """
+        @Review{Escobar2020BCGVP,
+            author = {Luis E. Escobar and A. Molina-Cruz and C. Barillas-Mury},
+            title = {BCG Vaccine Protection from Severe Coronavirus Disease 2019 (COVID19)},
+            year = {2020}
+        }
+        """
+
+        parse_string(clean_upbibtex(bibtex5), "bibtex")

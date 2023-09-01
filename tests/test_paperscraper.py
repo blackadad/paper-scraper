@@ -296,3 +296,12 @@ class Test14(IsolatedAsyncioTestCase):
             )
         except Exception as e:
             assert isinstance(e, DOINotFoundError)
+
+class Test15(IsolatedAsyncioTestCase):
+    async def test_pdf_link_from_google(self):
+        papers = await paperscraper.a_search_papers(
+            "Multiplex Base Editing to Protect from CD33-Directed Therapy: Implications for Immune and Gene Therapy",
+            limit=1,
+            search_type="google",
+        )
+        assert len(papers) == 1

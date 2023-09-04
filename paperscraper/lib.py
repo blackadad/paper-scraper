@@ -232,11 +232,12 @@ async def pubmed_scraper(paper, path, session):
 
 
 async def openaccess_scraper(paper, path, session):
-    if not paper["isOpenAccess"]:
+    url = paper.get("openAccessPdf", {}).get("url")
+    if not url:
         return False
-    url = paper["openAccessPdf"]["url"]
-    await link_to_pdf(url, path, session)
-    return True
+    else:
+        await link_to_pdf(url, path, session)
+        return True
 
 
 async def doi_scraper(paper, path, session):

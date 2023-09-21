@@ -445,7 +445,7 @@ async def a_search_papers(
                         response = await response.json()
                         if "data" not in response and year is not None:
                             if response["total"] == 0:
-                                logger.info(f"{title}{year} not found. try without year")
+                                logger.info(f"{title} | {year} not found. Now trying without year")
                                 del local_p["year"]
                                 async with session.get(url=url, params=local_p) as resp:
                                     if resp.status != 200:

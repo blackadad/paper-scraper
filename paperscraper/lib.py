@@ -459,7 +459,7 @@ async def a_search_papers(
                         return response["data"][0]
 
                 async with ThrottledClientSession(
-                    rate_limit=30, headers=ssheader
+                    rate_limit=90 if "x-api-key" in ssheader else 15 / 60, headers=ssheader
                 ) as sess:
                     tasks = [
                         ss_fetch_google_results(sess, endpoint, params, title, year, pdf_link)

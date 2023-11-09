@@ -414,7 +414,7 @@ async def a_search_papers(
                 year_extract = re.compile(r"\b\d{4}\b")
                 titles = [p["title"] for p in papers]
                 years = [None for p in papers]
-                for i,p in enumerate(papers):
+                for i, p in enumerate(papers):
                     match = year_extract.findall(p["publication_info"]["summary"])
                     if len(match) > 0:
                         years[i] = match[0]
@@ -423,11 +423,11 @@ async def a_search_papers(
                 google_pdf_links = []
                 for i, p in enumerate(papers):
                     google_pdf_links.append(None)
-                    if 'resources' in p:
-                        for res in p['resources']:
-                            if 'file_format' in res:
-                                if res['file_format'] == 'PDF':
-                                    google_pdf_links[i] = res['link']
+                    if 'resources" in p:
+                        for res in p["resources"]:
+                            if "file_format" in res:
+                                if res["file_format"] == "PDF":
+                                    google_pdf_links[i] = res["link"]
 
                 data = {"data": []}
 
@@ -459,10 +459,11 @@ async def a_search_papers(
                                 return None
                             if pdf_link is not None:
                                 # google scholar url takes precedence
-                                response["data"][0]['openAccessPdf'] = {'url': pdf_link}
+                                response["data"][0]["openAccessPdf"] = {"url": pdf_link}
                             return response["data"][0]
                     # fell through due to too many failures
                     return None
+                
                 # not really sure why this isn't a for loop
                 # historic reasons I guess
                 tasks = [

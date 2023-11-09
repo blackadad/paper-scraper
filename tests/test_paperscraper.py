@@ -88,7 +88,7 @@ class Test1(IsolatedAsyncioTestCase):
             os.remove(path)
 
         except RuntimeError as e:
-            assert '403' in str(e)
+            assert "403" in str(e)
         
     async def test_link3_to_pdf(self):
         link = "https://www.medrxiv.org/content/medrxiv/early/2020/03/23/2020.03.20.20040055.full.pdf"

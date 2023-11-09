@@ -44,7 +44,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
         try:
             await asyncio.wait_for(self._fillerTask, timeout=0.5)
         except asyncio.TimeoutError as err:
-            print(str(err))
+            pass
         await super().close()
 
     async def _filler(self, rate_limit: float = 1):

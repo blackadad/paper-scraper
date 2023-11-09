@@ -431,43 +431,47 @@ async def a_search_papers(
 
                 data = {"data": []}
 
-                async def ss_fetch_google_results(session, url, params, title, year, pdf_link):
+                async def ss_fetch_google_results(title, year, pdf_link):
                     # query Semantic Scholar for Google results
                     local_p = params.copy()
                     local_p["query"] = title.replace("-", " ")
                     if year is not None:
                         local_p["year"] = year
-                    async with session.get(url=url, params=local_p) as response:
-                        if response.status != 200:
-                            raise RuntimeError(
-                                f"Error searching papers: {response.status} {response.reason} {await response.text()}"
-                            )
-                        response = await response.json()
-                        if "data" not in response and year is not None:
-                            if response["total"] == 0:
-                                logger.info(f"{title} | {year} not found. Now trying without year")
-                                del local_p["year"]
-                                async with session.get(url=url, params=local_p) as resp:
-                                    if resp.status != 200:
-                                        raise RuntimeError(f"Error searching papers")
-                                    response = await resp.json()
-                        if "data" not in response:
-                            return None
-                        if pdf_link is not None:
-                            # google scholar url takes precedence
-                            response["data"][0]['openAccessPdf'] = {'url': pdf_link}
-                        return response["data"][0]
-
-                async with ThrottledClientSession(
-                    rate_limit=30, headers=ssheader
-                ) as sess:
-                    tasks = [
-                        ss_fetch_google_results(sess, endpoint, params, title, year, pdf_link)
-                        for title, year, pdf_link in zip(titles, years, google_pdf_links)
-                    ]
-                    data["data"] = await asyncio.gather(*tasks)
-                    # remove None from data
-                    data["data"] = [d for d in data["data"] if d is not None]
+                    retries = 3
+                    for _ in range(retries):
+                        async with ss_session.get(url=endpoint, params=local_p) as response:
+                            if response.status != 200:
+                                # Sometimes S2 fails with 504 (instead of 429)
+                                # could move this logic to rate limited session
+                                logger.warning(f"Error correlating papers from google to semantic scholar" 
+                                            f"{response.status} {response.reason} {await response.text()}")
+                                continue
+                            response = await response.json()
+                            if "data" not in response and year is not None:
+                                if response["total"] == 0:
+                                    logger.info(f"{title} | {year} not found. Now trying without year")
+                                    del local_p["year"]
+                                    async with ss_session.get(url=endpoint, params=local_p) as resp:
+                                        if resp.status != 200:
+                                            raise RuntimeError(f"Error searching papers")
+                                        response = await resp.json()
+                            if "data" not in response:
+                                return None
+                            if pdf_link is not None:
+                                # google scholar url takes precedence
+                                response["data"][0]['openAccessPdf'] = {'url': pdf_link}
+                            return response["data"][0]
+                    # fell through due to too many failures
+                    return None
+                # not really sure why this isn't a for loop
+                # historic reasons I guess
+                tasks = [
+                    ss_fetch_google_results(title, year, pdf_link)
+                    for title, year, pdf_link in zip(titles, years, google_pdf_links)
+                ]
+                data["data"] = await asyncio.gather(*tasks)
+                # remove None from data
+                data["data"] = [d for d in data["data"] if d is not None]
 
                 data["total"] = len(data["data"])
             field = "data"

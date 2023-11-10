@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 from typing import Optional
+import random
 import aiohttp
 import pypdf
 
@@ -95,10 +96,13 @@ class ThrottledClientSession(aiohttp.ClientSession):
         for retries in range(0, 5):
             await self._allow()
             response = await super()._request(*args, **kwargs)
-            if response and response.status == 429:
-                # cloudfront paid service limit; amazon says to use exponential backoff and retry
-                # they give the below formula as an example.
-                await asyncio.sleep((2**retries) * 0.1)
+            if response and (
+                response.status == 429
+                or response.status == 503
+                or response.status == 504
+            ):
+                # some service limit reached
+                await asyncio.sleep((2**retries) * 0.1 + random.random() * 0.1)
                 continue
             break
         return response

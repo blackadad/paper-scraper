@@ -3,7 +3,6 @@ from .lib import (
     format_bibtex,
     arxiv_to_pdf,
     pmc_to_pdf,
-    doi_to_pdf,
     a_search_papers,
     search_papers,
     link_to_pdf,

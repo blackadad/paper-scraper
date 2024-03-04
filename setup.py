@@ -14,6 +14,7 @@ setup(
     url="https://github.com/blackadad/paper-scraper",
     license="GPLv3",
     packages=["paperscraper"],
+    package_data={"paperscraper": ["py.typed"]},
     install_requires=["aiohttp", "pybtex", "pypdf"],
     test_suite="tests",
     long_description=long_description,

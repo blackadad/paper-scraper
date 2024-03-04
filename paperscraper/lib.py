@@ -386,11 +386,9 @@ async def a_search_papers(
                                 if res["file_format"] == "PDF":
                                     google_pdf_links[i] = res["link"]
 
-                data = {"data": []}
-                # now we mock a s2 request
-                # by querying Semantic Scholar with the Google results
-                local_p = params.copy()
-                for title, year, pdf_link in zip(titles, years, google_pdf_links):
+                       # Now we need to reconcile with S2 API these results
+                async def google2s2(title, year, pdf_link):
+                    local_p = params.copy()
                     local_p["query"] = title.replace("-", " ")
                     if year is not None:
                         local_p["year"] = year
@@ -400,7 +398,7 @@ async def a_search_papers(
                                 f"Error correlating papers from google to semantic scholar"
                                 f"{response.status} {response.reason} {await response.text()}"
                             )
-                            continue
+                            return None
                         response = await response.json()
                         if "data" not in response and year is not None:
                             if response["total"] == 0:
@@ -422,7 +420,15 @@ async def a_search_papers(
                             if pdf_link is not None:
                                 # google scholar url takes precedence
                                 response["data"][0]["openAccessPdf"] = {"url": pdf_link}
-                            data["data"].append(response["data"][0])
+                            return response["data"][0]
+
+                responses = await asyncio.gather(
+                    *[
+                        google2s2(t, y, p)
+                        for t, y, p in zip(titles, years, google_pdf_links)
+                    ]
+                )
+                data = {"data": [r for r in await responses if r is not None]}
                 data["total"] = len(data["data"])
             field = "data"
             if search_type == "paper":

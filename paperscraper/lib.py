@@ -386,48 +386,55 @@ async def a_search_papers(
                                 if res["file_format"] == "PDF":
                                     google_pdf_links[i] = res["link"]
 
-                       # Now we need to reconcile with S2 API these results
-                async def google2s2(title, year, pdf_link):
-                    local_p = params.copy()
-                    local_p["query"] = title.replace("-", " ")
-                    if year is not None:
-                        local_p["year"] = year
-                    async with ss_session.get(url=endpoint, params=local_p) as response:
-                        if response.status != 200:
-                            logger.warning(
-                                f"Error correlating papers from google to semantic scholar"
-                                f"{response.status} {response.reason} {await response.text()}"
-                            )
-                            return None
-                        response = await response.json()
-                        if "data" not in response and year is not None:
-                            if response["total"] == 0:
-                                logger.info(
-                                    f"{title} | {year} not found. Now trying without year"
+                # want this sepearate, since ss is rate_limit for google
+                async with ThrottledClientSession(
+                        rate_limit=90
+                        if "x-api-key" in ssheader
+                        else 15 / 60,
+                        headers=ssheader,
+                ) as ss_sub_session:
+                    # Now we need to reconcile with S2 API these results
+                    async def google2s2(title, year, pdf_link):
+                        local_p = params.copy()
+                        local_p["query"] = title.replace("-", " ")
+                        if year is not None:
+                            local_p["year"] = year
+                        async with ss_sub_session.get(url=endpoint, params=local_p) as response:
+                            if response.status != 200:
+                                logger.warning(
+                                    f"Error correlating papers from google to semantic scholar"
+                                    f"{response.status} {response.reason} {await response.text()}"
                                 )
-                                del local_p["year"]
-                                async with ss_session.get(
-                                    url=endpoint, params=local_p
-                                ) as resp:
-                                    if resp.status != 200:
-                                        logger.warning(
-                                            "Error correlating papers from google"
-                                            "to semantic scholar (no year)"
-                                            f"{response.status} {response.reason} {await response.text()}"
-                                        )
-                                    response = await resp.json()
-                        if "data" in response:
-                            if pdf_link is not None:
-                                # google scholar url takes precedence
-                                response["data"][0]["openAccessPdf"] = {"url": pdf_link}
-                            return response["data"][0]
-
-                responses = await asyncio.gather(
-                    *[
-                        google2s2(t, y, p)
-                        for t, y, p in zip(titles, years, google_pdf_links)
-                    ]
-                )
+                                return None
+                            response = await response.json()
+                            if "data" not in response and year is not None:
+                                if response["total"] == 0:
+                                    logger.info(
+                                        f"{title} | {year} not found. Now trying without year"
+                                    )
+                                    del local_p["year"]
+                                    async with ss_session.get(
+                                        url=endpoint, params=local_p
+                                    ) as resp:
+                                        if resp.status != 200:
+                                            logger.warning(
+                                                "Error correlating papers from google"
+                                                "to semantic scholar (no year)"
+                                                f"{response.status} {response.reason} {await response.text()}"
+                                            )
+                                        response = await resp.json()
+                            if "data" in response:
+                                if pdf_link is not None:
+                                    # google scholar url takes precedence
+                                    response["data"][0]["openAccessPdf"] = {"url": pdf_link}
+                                return response["data"][0]
+    
+                    responses = await asyncio.gather(
+                        *[
+                            google2s2(t, y, p)
+                            for t, y, p in zip(titles, years, google_pdf_links)
+                        ]
+                    )
                 data = {"data": [r for r in responses if r is not None]}
                 data["total"] = len(data["data"])
             field = "data"

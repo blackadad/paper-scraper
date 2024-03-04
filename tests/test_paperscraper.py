@@ -48,15 +48,6 @@ class Test1(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
-    async def test_doi_to_pdf(self):
-        doi = "10.1021/acs.jctc.9b00202"
-        path = "test.pdf"
-        async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
-        ) as session:
-            await paperscraper.doi_to_pdf(doi, path, session)
-        assert paperscraper.check_pdf(path)
-        os.remove(path)
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"

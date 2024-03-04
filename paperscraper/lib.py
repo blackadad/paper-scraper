@@ -428,7 +428,7 @@ async def a_search_papers(
                         for t, y, p in zip(titles, years, google_pdf_links)
                     ]
                 )
-                data = {"data": [r for r in await responses if r is not None]}
+                data = {"data": [r for r in responses if r is not None]}
                 data["total"] = len(data["data"])
             field = "data"
             if search_type == "paper":

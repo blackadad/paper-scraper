@@ -51,7 +51,9 @@ class Test1(IsolatedAsyncioTestCase):
         os.remove(path)
 
     async def test_openaccess_scraper(self) -> None:
-        assert not await openaccess_scraper({"openAccessPdf": None}, MagicMock(), MagicMock())
+        assert not await openaccess_scraper(
+            {"openAccessPdf": None}, MagicMock(), MagicMock()
+        )
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"
@@ -84,7 +86,7 @@ class Test1(IsolatedAsyncioTestCase):
 
         except RuntimeError as e:
             assert "403" in str(e)
-        
+
     async def test_link3_to_pdf(self):
         link = "https://www.medrxiv.org/content/medrxiv/early/2020/03/23/2020.03.20.20040055.full.pdf"
         path = "test.pdf"
@@ -224,6 +226,7 @@ class Test14(IsolatedAsyncioTestCase):
             )
         except Exception as e:
             assert isinstance(e, DOINotFoundError)
+
 
 class Test15(IsolatedAsyncioTestCase):
     async def test_pdf_link_from_google(self):

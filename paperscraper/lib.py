@@ -171,6 +171,7 @@ async def pmc_to_pdf(pmc_id, path, session):
         with open(path, "wb") as f:
             f.write(await r.read())
 
+
 async def arxiv_scraper(paper, path, session):
     if "ArXiv" not in paper["externalIds"]:
         return False
@@ -348,9 +349,9 @@ async def a_search_papers(
         except KeyError:
             pass
     async with ThrottledClientSession(
-        rate_limit=90
-        if "x-api-key" in ssheader or search_type == "google"
-        else 15 / 60,
+        rate_limit=(
+            90 if "x-api-key" in ssheader or search_type == "google" else 15 / 60
+        ),
         headers=ssheader,
     ) as ss_session:
         async with ss_session.get(
@@ -389,10 +390,8 @@ async def a_search_papers(
 
                 # want this sepearate, since ss is rate_limit for google
                 async with ThrottledClientSession(
-                        rate_limit=90
-                        if "x-api-key" in ssheader
-                        else 15 / 60,
-                        headers=ssheader,
+                    rate_limit=90 if "x-api-key" in ssheader else 15 / 60,
+                    headers=ssheader,
                 ) as ss_sub_session:
                     # Now we need to reconcile with S2 API these results
                     async def google2s2(title, year, pdf_link):
@@ -400,7 +399,9 @@ async def a_search_papers(
                         local_p["query"] = title.replace("-", " ")
                         if year is not None:
                             local_p["year"] = year
-                        async with ss_sub_session.get(url=endpoint, params=local_p) as response:
+                        async with ss_sub_session.get(
+                            url=endpoint, params=local_p
+                        ) as response:
                             if response.status != 200:
                                 logger.warning(
                                     "Error correlating papers from google to semantic scholar:"
@@ -428,9 +429,11 @@ async def a_search_papers(
                             if "data" in response:
                                 if pdf_link is not None:
                                     # google scholar url takes precedence
-                                    response["data"][0]["openAccessPdf"] = {"url": pdf_link}
+                                    response["data"][0]["openAccessPdf"] = {
+                                        "url": pdf_link
+                                    }
                                 return response["data"][0]
-    
+
                     responses = await asyncio.gather(
                         *[
                             google2s2(t, y, p)
@@ -473,9 +476,11 @@ async def a_search_papers(
                         year=paper["year"],
                         url=paper["url"],
                         paperId=paper["paperId"],
-                        doi=paper["externalIds"]["DOI"]
-                        if "DOI" in paper["externalIds"]
-                        else None,
+                        doi=(
+                            paper["externalIds"]["DOI"]
+                            if "DOI" in paper["externalIds"]
+                            else None
+                        ),
                         citationCount=paper["citationCount"],
                         title=paper["title"],
                     )

@@ -402,8 +402,9 @@ async def a_search_papers(
                         async with ss_sub_session.get(url=endpoint, params=local_p) as response:
                             if response.status != 200:
                                 logger.warning(
-                                    f"Error correlating papers from google to semantic scholar"
-                                    f"{response.status} {response.reason} {await response.text()}"
+                                    "Error correlating papers from google to semantic scholar:"
+                                    f" status {response.status}, reason {response.reason!r},"
+                                    f" text {await response.text()!r}."
                                 )
                                 return None
                             response = await response.json()

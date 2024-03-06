@@ -196,12 +196,13 @@ async def pubmed_scraper(paper, path, session):
 
 
 async def openaccess_scraper(paper, path, session):
-    url = paper.get("openAccessPdf", {}).get("url")
+    # NOTE: paper may not have the key 'openAccessPdf', or its value may be None
+    url = (paper.get("openAccessPdf") or {}).get("url")
     if not url:
         return False
-    else:
-        await link_to_pdf(url, path, session)
-        return True
+    await link_to_pdf(url, path, session)
+    return True
+
 
 async def local_scraper(paper, path):
     return True

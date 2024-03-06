@@ -1,9 +1,11 @@
+from unittest.mock import MagicMock
+
 import paperscraper
 import os
 from unittest import IsolatedAsyncioTestCase
 from paperscraper.utils import ThrottledClientSession
 from paperscraper.headers import get_header
-from paperscraper.lib import clean_upbibtex
+from paperscraper.lib import clean_upbibtex, openaccess_scraper
 from pybtex.database import parse_string
 from paperscraper.exceptions import DOINotFoundError
 
@@ -48,6 +50,8 @@ class Test1(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
+    async def test_openaccess_scraper(self) -> None:
+        assert not await openaccess_scraper({"openAccessPdf": None}, MagicMock(), MagicMock())
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"

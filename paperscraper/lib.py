@@ -349,7 +349,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     if semantic_scholar_api_key is not None:
         ssheader["x-api-key"] = semantic_scholar_api_key
     else:
-        # check if its in the environment
+        # check if it's in the environment
         with contextlib.suppress(KeyError):
             ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
     async with ThrottledClientSession(  # noqa: SIM117

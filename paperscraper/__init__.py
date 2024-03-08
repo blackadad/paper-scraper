@@ -1,14 +1,16 @@
-from .version import __version__
+# ruff: noqa: F401
+
+from .exceptions import DOINotFoundError
 from .lib import (
-    format_bibtex,
-    arxiv_to_pdf,
-    pmc_to_pdf,
     a_search_papers,
-    search_papers,
-    link_to_pdf,
-    pubmed_to_pdf,
+    arxiv_to_pdf,
     default_scraper,
+    format_bibtex,
+    link_to_pdf,
+    pmc_to_pdf,
+    pubmed_to_pdf,
+    search_papers,
 )
 from .scraper import Scraper
 from .utils import check_pdf
-from .exceptions import DOINotFoundError
+from .version import __version__

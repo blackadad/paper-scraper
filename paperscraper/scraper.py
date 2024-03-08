@@ -1,6 +1,7 @@
+from dataclasses import dataclass
+
 from .headers import get_header
 from .utils import ThrottledClientSession, check_pdf
-from dataclasses import dataclass
 
 
 @dataclass
@@ -41,11 +42,13 @@ class Scraper:
         self.scrapers.sort(key=lambda x: x.priority, reverse=True)
         # reshape sorted scrapers
         sorted_scrapers = []
-        for priority in sorted(set([s.priority for s in self.scrapers])):
-            sorted_scrapers.append([s for s in self.scrapers if s.priority == priority])
+        for priority in sorted({s.priority for s in self.scrapers}):
+            sorted_scrapers.append(  # noqa: PERF401
+                [s for s in self.scrapers if s.priority == priority]
+            )
         self.sorted_scrapers = sorted_scrapers
 
-    async def scrape(self, paper, path, i=0, logger=None) -> bool:
+    async def scrape(self, paper, path, i=0, logger=None) -> bool:  # noqa: D417
         """Scrape a paper which contains data from Semantic Scholar API.
 
         Args:
@@ -57,7 +60,7 @@ class Scraper:
         scrape_result = {s.name: "none" for s in self.scrapers}
         for scrapers in self.sorted_scrapers[::-1]:
             for j in range(len(scrapers)):
-                j = (j + i) % len(scrapers)
+                j = (j + i) % len(scrapers)  # noqa: PLW2901
                 scraper = scrapers[j]
                 try:
                     result = await scraper.function(paper, path, **scraper.kwargs)
@@ -76,6 +79,7 @@ class Scraper:
                 scrape_result[scraper.name] = "failed"
             if self.callback is not None:
                 await self.callback(paper["title"], scrape_result)
+        return None
 
     async def close(self):
         for scraper in self.scrapers:

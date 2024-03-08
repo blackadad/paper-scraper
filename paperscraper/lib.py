@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import logging
 import os
 import re
 import sys
+from typing import Any
 
 from .exceptions import DOINotFoundError
 from .headers import get_header
@@ -219,6 +222,24 @@ def default_scraper() -> Scraper:
     )
     scraper.register_scraper(local_scraper, attach_session=False, priority=12)
     return scraper
+
+
+def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, Any]:
+    """Parse raw paper metadata from Semantic Scholar into a more rich format."""
+    bibtex = paper["citationStyles"]["bibtex"]
+    key = bibtex.split("{")[1].split(",")[0]
+    return {
+        "citation": format_bibtex(bibtex, key),
+        "key": key,
+        "bibtex": clean_upbibtex(bibtex),
+        "tldr": paper.get("tldr"),
+        "year": paper["year"],
+        "url": paper["url"],
+        "paperId": paper["paperId"],
+        "doi": paper["externalIds"].get("DOI", None),
+        "citationCount": paper["citationCount"],
+        "title": paper["title"],
+    }
 
 
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
@@ -448,31 +469,22 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"  # noqa: E501
                 )
 
-            async def process_paper(paper, i):
+            async def scrape_parse_paper(
+                paper: dict[str, Any], i: int
+            ) -> tuple[str, dict[str, Any]] | tuple[None, None]:
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
                 success = await scraper.scrape(paper, path, i=i, logger=logger)
-                if success:
-                    bibtex = paper["citationStyles"]["bibtex"]
-                    key = bibtex.split("{")[1].split(",")[0]
-                    return path, {
-                        "citation": format_bibtex(bibtex, key),
-                        "key": key,
-                        "bibtex": clean_upbibtex(bibtex),
-                        "tldr": paper.get("tldr", None),
-                        "year": paper["year"],
-                        "url": paper["url"],
-                        "paperId": paper["paperId"],
-                        "doi": (paper["externalIds"].get("DOI", None)),
-                        "citationCount": paper["citationCount"],
-                        "title": paper["title"],
-                    }
-                return None, None
+                return path, (
+                    parse_semantic_scholar_metadata(paper) if success else (None, None)
+                )
 
             # batch them, since we may reach desired limit before all done
             for i in range(0, len(papers), batch_size):
-                batch = papers[i : i + batch_size]
                 results = await asyncio.gather(
-                    *[process_paper(p, i + j) for j, p in enumerate(batch)]
+                    *(
+                        scrape_parse_paper(p, i + j)
+                        for j, p in enumerate(papers[i : i + batch_size])
+                    )
                 )
                 for path, info in results:
                     if path is not None:

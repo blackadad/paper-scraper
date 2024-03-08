@@ -209,7 +209,7 @@ async def local_scraper(paper, path):  # noqa: ARG001
     return True
 
 
-def default_scraper():
+def default_scraper() -> Scraper:
     scraper = Scraper()
     scraper.register_scraper(arxiv_scraper, attach_session=True, rate_limit=30 / 60)
     scraper.register_scraper(pmc_scraper, rate_limit=30 / 60, attach_session=True)

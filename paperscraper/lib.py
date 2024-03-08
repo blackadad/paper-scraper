@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import logging
 import os
 import re
 import sys
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from .exceptions import DOINotFoundError
 from .headers import get_header
@@ -209,8 +213,10 @@ async def local_scraper(paper, path):  # noqa: ARG001
     return True
 
 
-def default_scraper():
-    scraper = Scraper()
+def default_scraper(
+    callback: Callable[[str, dict[str, str]], Awaitable] | None = None
+) -> Scraper:
+    scraper = Scraper(callback=callback)
     scraper.register_scraper(arxiv_scraper, attach_session=True, rate_limit=30 / 60)
     scraper.register_scraper(pmc_scraper, rate_limit=30 / 60, attach_session=True)
     scraper.register_scraper(pubmed_scraper, rate_limit=30 / 60, attach_session=True)
@@ -221,12 +227,30 @@ def default_scraper():
     return scraper
 
 
+def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, Any]:
+    """Parse raw paper metadata from Semantic Scholar into a more rich format."""
+    bibtex = paper["citationStyles"]["bibtex"]
+    key = bibtex.split("{")[1].split(",")[0]
+    return {
+        "citation": format_bibtex(bibtex, key),
+        "key": key,
+        "bibtex": clean_upbibtex(bibtex),
+        "tldr": paper.get("tldr"),
+        "year": paper["year"],
+        "url": paper["url"],
+        "paperId": paper["paperId"],
+        "doi": paper["externalIds"].get("DOI", None),
+        "citationCount": paper["citationCount"],
+        "title": paper["title"],
+    }
+
+
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     query,
     limit=10,
     pdir=os.curdir,
     semantic_scholar_api_key=None,
-    _paths=None,
+    _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
     _limit=100,
     _offset=0,
     logger=None,
@@ -235,7 +259,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     scraper=None,
     batch_size=10,
     search_type="default",
-):
+) -> dict[str | os.PathLike, dict[str, Any]]:
     if not os.path.exists(pdir):
         os.mkdir(pdir)
     if logger is None:
@@ -321,14 +345,13 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
         if "as_ylo" not in google_params:
             logger.warning(f"Could not parse year {year}")
 
-    paths = {} if _paths is None else _paths
-    if scraper is None:
-        scraper = default_scraper()
+    paths = _paths or {}
+    scraper = scraper or default_scraper()
     ssheader = get_header()
     if semantic_scholar_api_key is not None:
         ssheader["x-api-key"] = semantic_scholar_api_key
     else:
-        # check if its in the environment
+        # check if it's in the environment
         with contextlib.suppress(KeyError):
             ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
     async with ThrottledClientSession(  # noqa: SIM117
@@ -377,7 +400,9 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     headers=ssheader,
                 ) as ss_sub_session:
                     # Now we need to reconcile with S2 API these results
-                    async def google2s2(title, year, pdf_link):
+                    async def google2s2(
+                        title: str, year: str | None, pdf_link
+                    ) -> dict[str, Any] | None:
                         local_p = params.copy()
                         local_p["query"] = title.replace("-", " ")
                         if year is not None:
@@ -421,10 +446,10 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                             return None
 
                     responses = await asyncio.gather(
-                        *[
+                        *(
                             google2s2(t, y, p)
                             for t, y, p in zip(titles, years, google_pdf_links)
-                        ]
+                        )
                     )
                 data = {"data": [r for r in responses if r is not None]}
                 data["total"] = len(data["data"])
@@ -448,31 +473,22 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"  # noqa: E501
                 )
 
-            async def process_paper(paper, i):
+            async def scrape_parse_paper(
+                paper: dict[str, Any], i: int
+            ) -> tuple[str, dict[str, Any]] | tuple[None, None]:
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
                 success = await scraper.scrape(paper, path, i=i, logger=logger)
-                if success:
-                    bibtex = paper["citationStyles"]["bibtex"]
-                    key = bibtex.split("{")[1].split(",")[0]
-                    return path, {
-                        "citation": format_bibtex(bibtex, key),
-                        "key": key,
-                        "bibtex": clean_upbibtex(bibtex),
-                        "tldr": paper.get("tldr", None),
-                        "year": paper["year"],
-                        "url": paper["url"],
-                        "paperId": paper["paperId"],
-                        "doi": (paper["externalIds"].get("DOI", None)),
-                        "citationCount": paper["citationCount"],
-                        "title": paper["title"],
-                    }
-                return None, None
+                return path, (
+                    parse_semantic_scholar_metadata(paper) if success else (None, None)
+                )
 
             # batch them, since we may reach desired limit before all done
             for i in range(0, len(papers), batch_size):
-                batch = papers[i : i + batch_size]
                 results = await asyncio.gather(
-                    *[process_paper(p, i + j) for j, p in enumerate(batch)]
+                    *(
+                        scrape_parse_paper(p, i + j)
+                        for j, p in enumerate(papers[i : i + batch_size])
+                    )
                 )
                 for path, info in results:
                     if path is not None:

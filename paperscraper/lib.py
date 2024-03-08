@@ -1,16 +1,15 @@
+import asyncio
+import contextlib
+import logging
 import os
 import re
-import pybtex
-from pybtex.bibtex import BibTeXEngine
-from .headers import get_header
-from .utils import ThrottledClientSession
-from .scraper import Scraper
-import asyncio
-import re
 import sys
-import logging
-from .log_formatter import CustomFormatter
+
 from .exceptions import DOINotFoundError
+from .headers import get_header
+from .log_formatter import CustomFormatter
+from .scraper import Scraper
+from .utils import ThrottledClientSession
 
 
 def clean_upbibtex(bibtex):
@@ -128,10 +127,9 @@ async def link_to_pdf(url, path, session):
                         with open(path, "wb") as f:
                             f.write(await r.read())
                         return
-                    else:
-                        raise RuntimeError(f"No PDF found from {pdf_link}")
-            except TypeError:
-                raise RuntimeError(f"Malformed URL {pdf_link} -- {url}")
+                    raise RuntimeError(f"No PDF found from {pdf_link}")
+            except TypeError as exc:
+                raise RuntimeError(f"Malformed URL {pdf_link} -- {url}") from exc
 
 
 async def find_pmc_pdf_link(pmc_id, session):
@@ -267,23 +265,15 @@ async def a_search_papers(
         params["offset"] = _offset
         params["limit"] = _limit
     elif search_type == "paper":
-        endpoint = "https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{paper_id}".format(
-            paper_id=query
-        )
+        endpoint = f"https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{query}"
         params["limit"] = _limit
     elif search_type == "doi":
-        endpoint = "https://api.semanticscholar.org/graph/v1/paper/DOI:{doi}".format(
-            doi=query
-        )
+        endpoint = f"https://api.semanticscholar.org/graph/v1/paper/DOI:{query}"
     elif search_type == "future_citations":
-        endpoint = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}/citations".format(
-            paper_id=query
-        )
+        endpoint = f"https://api.semanticscholar.org/graph/v1/paper/{query}/citations"
         params["limit"] = _limit
     elif search_type == "past_references":
-        endpoint = "https://api.semanticscholar.org/graph/v1/paper/{paper_id}/references".format(
-            paper_id=query
-        )
+        endpoint = f"https://api.semanticscholar.org/graph/v1/paper/{query}/references"
         params["limit"] = _limit
     elif search_type == "google":
         endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -303,12 +293,10 @@ async def a_search_papers(
         year = year.strip()
         if "-" in year:
             # make sure start/end are valid
-            try:
+            with contextlib.suppress(ValueError):
                 start, end = year.split("-")
                 if int(start) <= int(end):
                     params["year"] = year
-            except ValueError:
-                pass
         if "year" not in params:
             logger.warning(f"Could not parse year {year}")
 
@@ -325,18 +313,13 @@ async def a_search_papers(
             except ValueError:
                 pass
         else:
-            try:
+            with contextlib.suppress(ValueError):
                 google_params["as_ylo"] = year
                 google_params["as_yhi"] = year
-            except ValueError:
-                pass
         if "as_ylo" not in google_params:
             logger.warning(f"Could not parse year {year}")
 
-    if _paths is None:
-        paths = {}
-    else:
-        paths = _paths
+    paths = {} if _paths is None else _paths
     if scraper is None:
         scraper = default_scraper()
     ssheader = get_header()
@@ -344,10 +327,8 @@ async def a_search_papers(
         ssheader["x-api-key"] = semantic_scholar_api_key
     else:
         # check if its in the environment
-        try:
+        with contextlib.suppress(KeyError):
             ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
-        except KeyError:
-            pass
     async with ThrottledClientSession(
         rate_limit=(
             90 if "x-api-key" in ssheader or search_type == "google" else 15 / 60
@@ -367,7 +348,7 @@ async def a_search_papers(
             data = await response.json()
 
             if search_type == "google":
-                if not "organic_results" in data:
+                if "organic_results" not in data:
                     return paths
                 papers = data["organic_results"]
                 year_extract = re.compile(r"\b\d{4}\b")
@@ -433,6 +414,7 @@ async def a_search_papers(
                                         "url": pdf_link
                                     }
                                 return response["data"][0]
+                            return None
 
                     responses = await asyncio.gather(
                         *[
@@ -468,22 +450,18 @@ async def a_search_papers(
                 if success:
                     bibtex = paper["citationStyles"]["bibtex"]
                     key = bibtex.split("{")[1].split(",")[0]
-                    return path, dict(
-                        citation=format_bibtex(bibtex, key),
-                        key=key,
-                        bibtex=clean_upbibtex(bibtex),
-                        tldr=paper["tldr"] if "tldr" in paper else None,
-                        year=paper["year"],
-                        url=paper["url"],
-                        paperId=paper["paperId"],
-                        doi=(
-                            paper["externalIds"]["DOI"]
-                            if "DOI" in paper["externalIds"]
-                            else None
-                        ),
-                        citationCount=paper["citationCount"],
-                        title=paper["title"],
-                    )
+                    return path, {
+                        "citation": format_bibtex(bibtex, key),
+                        "key": key,
+                        "bibtex": clean_upbibtex(bibtex),
+                        "tldr": paper.get("tldr", None),
+                        "year": paper["year"],
+                        "url": paper["url"],
+                        "paperId": paper["paperId"],
+                        "doi": (paper["externalIds"].get("DOI", None)),
+                        "citationCount": paper["citationCount"],
+                        "title": paper["title"],
+                    }
                 return None, None
 
             # batch them, since we may reach desired limit before all done

@@ -1,6 +1,7 @@
+from dataclasses import dataclass
+
 from .headers import get_header
 from .utils import ThrottledClientSession, check_pdf
-from dataclasses import dataclass
 
 
 @dataclass
@@ -41,7 +42,7 @@ class Scraper:
         self.scrapers.sort(key=lambda x: x.priority, reverse=True)
         # reshape sorted scrapers
         sorted_scrapers = []
-        for priority in sorted(set([s.priority for s in self.scrapers])):
+        for priority in sorted({s.priority for s in self.scrapers}):
             sorted_scrapers.append([s for s in self.scrapers if s.priority == priority])
         self.sorted_scrapers = sorted_scrapers
 
@@ -76,6 +77,7 @@ class Scraper:
                 scrape_result[scraper.name] = "failed"
             if self.callback is not None:
                 await self.callback(paper["title"], scrape_result)
+        return None
 
     async def close(self):
         for scraper in self.scrapers:

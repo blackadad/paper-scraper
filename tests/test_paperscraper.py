@@ -1,13 +1,14 @@
-from unittest.mock import MagicMock
-
-import paperscraper
 import os
 from unittest import IsolatedAsyncioTestCase
-from paperscraper.utils import ThrottledClientSession
+from unittest.mock import MagicMock
+
+from pybtex.database import parse_string
+
+import paperscraper
+from paperscraper.exceptions import DOINotFoundError
 from paperscraper.headers import get_header
 from paperscraper.lib import clean_upbibtex, openaccess_scraper
-from pybtex.database import parse_string
-from paperscraper.exceptions import DOINotFoundError
+from paperscraper.utils import ThrottledClientSession
 
 
 class Test0(IsolatedAsyncioTestCase):

@@ -1,15 +1,17 @@
 import asyncio
+import contextlib
 import os
+import random
 import time
 from typing import Optional
-import random
+
 import aiohttp
 import pypdf
 
 
 class ThrottledClientSession(aiohttp.ClientSession):
     """
-    Rate-throttled client session class inherited from aiohttp.ClientSession)
+    Rate-throttled client session class inherited from aiohttp.ClientSession).
 
     USAGE:
         replace `session = aiohttp.ClientSession()`
@@ -20,7 +22,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
 
     MIN_SLEEP = 0.1
 
-    def __init__(self, rate_limit: float = None, *args, **kwargs) -> None:
+    def __init__(self, rate_limit: Optional[float] = None, *args, **kwargs) -> None:
         # rate_limit - per second
         super().__init__(*args, **kwargs)
         self.rate_limit = rate_limit
@@ -39,17 +41,15 @@ class ThrottledClientSession(aiohttp.ClientSession):
         return None
 
     async def close(self) -> None:
-        """Close rate-limiter's "bucket filler" task"""
+        """Close rate-limiter's "bucket filler" task."""
         if self._fillerTask is not None:
             self._fillerTask.cancel()
-        try:
+        with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(self._fillerTask, timeout=0.5)
-        except asyncio.TimeoutError as err:
-            pass
         await super().close()
 
     async def _filler(self, rate_limit: float = 1):
-        """Filler task to fill the leaky bucket algo"""
+        """Filler task to fill the leaky bucket algo."""
         try:
             if self._queue is None:
                 return
@@ -58,7 +58,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
             updated_at = time.monotonic()
             fraction = 0
             extra_increment = 0
-            for i in range(0, self._queue.maxsize):
+            for i in range(self._queue.maxsize):
                 self._queue.put_nowait(i)
             while True:
                 if not self._queue.full():
@@ -73,7 +73,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
                         )
                     )
                     fraction = fraction % 1
-                    for i in range(0, items_2_add):
+                    for i in range(items_2_add):
                         self._queue.put_nowait(i)
                     updated_at = now
                 await asyncio.sleep(sleep)
@@ -89,18 +89,13 @@ class ThrottledClientSession(aiohttp.ClientSession):
             #    self._start_time = time.time()
             await self._queue.get()
             self._queue.task_done()
-        return None
 
     async def _request(self, *args, **kwargs) -> aiohttp.ClientResponse:
-        """Throttled _request()"""
-        for retries in range(0, 5):
+        """Throttled _request()."""
+        for retries in range(5):
             await self._allow()
             response = await super()._request(*args, **kwargs)
-            if response and (
-                response.status == 429
-                or response.status == 503
-                or response.status == 504
-            ):
+            if response and (response.status in (429, 503, 504)):
                 # some service limit reached
                 await asyncio.sleep((2**retries) * 0.1 + random.random() * 0.1)
                 continue

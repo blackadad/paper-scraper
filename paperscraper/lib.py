@@ -388,7 +388,7 @@ async def a_search_papers(
                                 if res["file_format"] == "PDF":
                                     google_pdf_links[i] = res["link"]
 
-                # want this sepearate, since ss is rate_limit for google
+                # want this separate, since ss is rate_limit for google
                 async with ThrottledClientSession(
                     rate_limit=90 if "x-api-key" in ssheader else 15 / 60,
                     headers=ssheader,
@@ -486,7 +486,7 @@ async def a_search_papers(
                     )
                 return None, None
 
-            # batch them, since since we may reach desired limit before all done
+            # batch them, since we may reach desired limit before all done
             for i in range(0, len(papers), batch_size):
                 batch = papers[i : i + batch_size]
                 results = await asyncio.gather(

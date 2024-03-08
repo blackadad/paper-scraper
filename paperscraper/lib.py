@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .exceptions import DOINotFoundError
@@ -212,8 +213,10 @@ async def local_scraper(paper, path):  # noqa: ARG001
     return True
 
 
-def default_scraper() -> Scraper:
-    scraper = Scraper()
+def default_scraper(
+    callback: Callable[[str, dict[str, str]], Awaitable] | None = None
+) -> Scraper:
+    scraper = Scraper(callback=callback)
     scraper.register_scraper(arxiv_scraper, attach_session=True, rate_limit=30 / 60)
     scraper.register_scraper(pmc_scraper, rate_limit=30 / 60, attach_session=True)
     scraper.register_scraper(pubmed_scraper, rate_limit=30 / 60, attach_session=True)

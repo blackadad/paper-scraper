@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from .headers import get_header
@@ -10,18 +11,20 @@ from .utils import ThrottledClientSession, check_pdf
 
 @dataclass
 class ScraperFunction:
-    function: callable
+    function: Callable[..., Awaitable[bool]]
     priority: int
     kwargs: dict
     name: str
     check_pdf: bool
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} - {self.priority}"
 
 
 class Scraper:
-    def __init__(self, callback=None):
+    def __init__(
+        self, callback: Callable[[str, dict[str, str]], Awaitable] | None = None
+    ):
         self.scrapers = []
         self.sorted_scrapers = []
         self.callback = callback
@@ -29,12 +32,12 @@ class Scraper:
     def register_scraper(
         self,
         func,
-        attach_session=False,
-        priority=10,
-        name=None,
-        check=True,
-        rate_limit=15 / 60,
-    ):
+        attach_session: bool = False,
+        priority: int = 10,
+        name: str | None = None,
+        check: bool = True,
+        rate_limit: float | None = 15 / 60,
+    ) -> None:
         kwargs = {}
         if name is None:
             name = func.__name__.replace("_scraper", "")
@@ -63,9 +66,9 @@ class Scraper:
 
         Args:
             paper (dict): A paper object from Semantic Scholar API.
-            path (str): The path to save the paper.
-            i (int): An index to shift call order to load balance.
-            logger (logging.Logger | None): An optional logger to log the scraping process.
+            path: The path to save the paper.
+            i: An index to shift call order to load balance.
+            logger: An optional logger to log the scraping process.
         """
         # want highest priority first
         scrape_result = {s.name: "none" for s in self.scrapers}
@@ -90,9 +93,9 @@ class Scraper:
                 scrape_result[scraper.name] = "failed"
             if self.callback is not None:
                 await self.callback(paper["title"], scrape_result)
-        return None
+        return False
 
-    async def close(self):
+    async def close(self) -> None:
         for scraper in self.scrapers:
             if "session" in scraper.kwargs:
                 await scraper.kwargs["session"].close()

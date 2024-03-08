@@ -1,6 +1,6 @@
 from setuptools import setup
 
-exec(open("paperscraper/version.py").read())
+exec(open("paperscraper/version.py").read())  # noqa: S102, SIM115
 
 with open("README.md", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -25,4 +25,3 @@ setup(
         "Operating System :: OS Independent",
     ],
 )
-1

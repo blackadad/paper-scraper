@@ -22,7 +22,9 @@ class ThrottledClientSession(aiohttp.ClientSession):
 
     MIN_SLEEP = 0.1
 
-    def __init__(self, rate_limit: Optional[float] = None, *args, **kwargs) -> None:
+    def __init__(
+        self, rate_limit: Optional[float] = None, *args, **kwargs  # noqa: FA100
+    ) -> None:
         # rate_limit - per second
         super().__init__(*args, **kwargs)
         self.rate_limit = rate_limit
@@ -35,7 +37,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
             self._queue = asyncio.Queue(min(2, int(rate_limit) + 1))
             self._fillerTask = asyncio.create_task(self._filler(rate_limit))
 
-    def _get_sleep(self) -> Optional[float]:
+    def _get_sleep(self) -> Optional[float]:  # noqa: FA100
         if self.rate_limit is not None:
             return max(1 / self.rate_limit, self.MIN_SLEEP)
         return None
@@ -107,7 +109,7 @@ def check_pdf(path, verbose=False):
     if not os.path.exists(path):
         return False
     try:
-        pdf = pypdf.PdfReader(path)
+        pdf = pypdf.PdfReader(path)  # noqa: F841
     except (pypdf.errors.PyPdfError, ValueError) as e:
         if verbose:
             print(f"PDF at {path} is corrupt: {e}")

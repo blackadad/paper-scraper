@@ -12,7 +12,7 @@ class CustomFormatter(logging.Formatter):
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
     )
 
-    FORMATS = {
+    FORMATS = {  # noqa: RUF012
         logging.DEBUG: grey + format + reset,
         logging.INFO: grey + format + reset,
         logging.WARNING: yellow + format + reset,

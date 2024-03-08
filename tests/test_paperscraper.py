@@ -86,7 +86,7 @@ class Test1(IsolatedAsyncioTestCase):
             os.remove(path)
 
         except RuntimeError as e:
-            assert "403" in str(e)
+            assert "403" in str(e)  # noqa: PT017
 
     async def test_link3_to_pdf(self):
         link = "https://www.medrxiv.org/content/medrxiv/early/2020/03/23/2020.03.20.20040055.full.pdf"
@@ -153,7 +153,10 @@ class Test7(IsolatedAsyncioTestCase):
         query = "covid vaccination"
         scraper = paperscraper.Scraper()
         scraper = scraper.register_scraper(
-            lambda paper, path, **kwargs: None, priority=0, name="test", check=False
+            lambda paper, path, **kwargs: None,  # noqa: ARG005
+            priority=0,
+            name="test",
+            check=False,
         )
         papers = await paperscraper.a_search_papers(query, limit=5, scraper=scraper)
         assert len(papers) >= 5
@@ -171,12 +174,14 @@ class Test9(IsolatedAsyncioTestCase):
         # make sure default scraper doesn't duplicate scrapers
         scraper = paperscraper.default_scraper()
 
-        async def callback(paper, result):
+        async def callback(paper, result):  # noqa: ARG001
             assert len(result) > 5
             print(result)
 
         scraper.callback = callback
-        papers = await paperscraper.a_search_papers("test", limit=1, scraper=scraper)
+        papers = await paperscraper.a_search_papers(  # noqa: F841
+            "test", limit=1, scraper=scraper
+        )
         await scraper.close()
 
 
@@ -222,17 +227,17 @@ class Test13(IsolatedAsyncioTestCase):
 class Test14(IsolatedAsyncioTestCase):
     async def test_scraper_doi_search(self):
         try:
-            papers = await paperscraper.a_search_papers(
+            papers = await paperscraper.a_search_papers(  # noqa: F841
                 "10.23919/eusipco55093.2022.9909972", limit=1, search_type="doi"
             )
         except Exception as e:
-            assert isinstance(e, DOINotFoundError)
+            assert isinstance(e, DOINotFoundError)  # noqa: PT017
 
 
 class Test15(IsolatedAsyncioTestCase):
     async def test_pdf_link_from_google(self):
         papers = await paperscraper.a_search_papers(
-            "Multiplex Base Editing to Protect from CD33-Directed Therapy: Implications for Immune and Gene Therapy",
+            "Multiplex Base Editing to Protect from CD33-Directed Therapy: Implications for Immune and Gene Therapy",  # noqa: E501
             limit=1,
             search_type="google",
         )
@@ -253,8 +258,8 @@ class Test16(IsolatedAsyncioTestCase):
                 volume = {9 9},
                 year = {2013}
             }
-        """
-        text = "Romelia Salomón-Ferrer, A. Götz, D. Poole, S. Le Grand, and R. Walker. Routine microsecond molecular dynamics simulations with amber on gpus. 2. explicit solvent particle mesh ewald. Journal of chemical theory and computation, 9 9:3878-88, 2013."
+        """  # noqa: E501
+        text = "Romelia Salomón-Ferrer, A. Götz, D. Poole, S. Le Grand, and R. Walker. Routine microsecond molecular dynamics simulations with amber on gpus. 2. explicit solvent particle mesh ewald. Journal of chemical theory and computation, 9 9:3878-88, 2013."  # noqa: E501
         assert paperscraper.format_bibtex(bibtex, "Salomón-Ferrer2013RoutineMM") == text
 
         bibtex2 = """
@@ -267,7 +272,7 @@ class Test16(IsolatedAsyncioTestCase):
             volume = {39},
             year = {2019}
             }
-        """
+        """  # noqa: E501
 
         parse_string(clean_upbibtex(bibtex2), "bibtex")
 
@@ -281,7 +286,7 @@ class Test16(IsolatedAsyncioTestCase):
             volume = {39},
             year = {2019}
         }
-        """
+        """  # noqa: E501
 
         parse_string(clean_upbibtex(bibtex3), "bibtex")
 
@@ -295,7 +300,7 @@ class Test16(IsolatedAsyncioTestCase):
             volume = {39},
             year = {2019}
         }
-        """
+        """  # noqa: E501
 
         parse_string(clean_upbibtex(bibtex4), "bibtex")
 

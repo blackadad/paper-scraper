@@ -61,7 +61,7 @@ def format_bibtex(bibtex, key):
     style = unsrtalpha.Style()
     try:
         bd = parse_string(clean_upbibtex(bibtex), "bibtex")
-    except Exception as e:
+    except Exception as e:  # noqa: F841
         return "Ref " + key
     try:
         entry = style.format_entry(label="1", entry=bd.entries[key])
@@ -86,9 +86,9 @@ async def arxiv_to_pdf(arxiv_id, path, session):
     url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
     # download
     async with session.get(url, allow_redirects=True) as r:
-        if r.status != 200 or not await likely_pdf(r):
+        if r.status != 200 or not await likely_pdf(r):  # noqa: PLR2004
             raise RuntimeError(f"No paper with arxiv id {arxiv_id}")
-        with open(path, "wb") as f:
+        with open(path, "wb") as f:  # noqa: ASYNC101
             f.write(await r.read())
 
 
@@ -96,13 +96,13 @@ async def link_to_pdf(url, path, session):
     # download
     pdf_link = None
     async with session.get(url, allow_redirects=True) as r:
-        if r.status != 200:
+        if r.status != 200:  # noqa: PLR2004
             raise RuntimeError(f"Unable to download {url}, status code {r.status}")
         if "pdf" in r.headers["Content-Type"]:
-            with open(path, "wb") as f:
+            with open(path, "wb") as f:  # noqa: ASYNC101
                 f.write(await r.read())
             return
-        else:
+        else:  # noqa: RET505
             # try to find a pdf link
             html_text = await r.text()
             # should have pdf somewhere (could not be at end)
@@ -118,13 +118,15 @@ async def link_to_pdf(url, path, session):
                 pdf_link = epdf_link.group(1).replace("epdf", "pdf")
 
             try:
-                async with session.get(pdf_link, allow_redirects=True) as r:
-                    if r.status != 200:
+                async with session.get(
+                    pdf_link, allow_redirects=True
+                ) as r:  # noqa: PLW2901
+                    if r.status != 200:  # noqa: PLR2004
                         raise RuntimeError(
                             f"Unable to download {pdf_link}, status code {r.status}"
                         )
                     if "pdf" in r.headers["Content-Type"]:
-                        with open(path, "wb") as f:
+                        with open(path, "wb") as f:  # noqa: ASYNC101
                             f.write(await r.read())
                         return
                     raise RuntimeError(f"No PDF found from {pdf_link}")
@@ -135,7 +137,7 @@ async def link_to_pdf(url, path, session):
 async def find_pmc_pdf_link(pmc_id, session):
     url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}"
     async with session.get(url) as r:
-        if r.status != 200:
+        if r.status != 200:  # noqa: PLR2004
             raise RuntimeError(f"No paper with pmc id {pmc_id}. {url} {r.status}")
         html_text = await r.text()
         pdf_link = re.search(r'href="(.*\.pdf)"', html_text)
@@ -148,7 +150,7 @@ async def pubmed_to_pdf(pubmed_id, path, session):
     url = f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/"
 
     async with session.get(url) as r:
-        if r.status != 200:
+        if r.status != 200:  # noqa: PLR2004
             raise RuntimeError(
                 f"Error fetching PMC ID for PubMed ID {pubmed_id}. {r.status}"
             )
@@ -164,9 +166,9 @@ async def pubmed_to_pdf(pubmed_id, path, session):
 async def pmc_to_pdf(pmc_id, path, session):
     pdf_url = await find_pmc_pdf_link(pmc_id, session)
     async with session.get(pdf_url, allow_redirects=True) as r:
-        if r.status != 200 or not await likely_pdf(r):
+        if r.status != 200 or not await likely_pdf(r):  # noqa: PLR2004
             raise RuntimeError(f"No paper with pmc id {pmc_id}. {pdf_url} {r.status}")
-        with open(path, "wb") as f:
+        with open(path, "wb") as f:  # noqa: ASYNC101
             f.write(await r.read())
 
 
@@ -203,7 +205,7 @@ async def openaccess_scraper(paper, path, session):
     return True
 
 
-async def local_scraper(paper, path):
+async def local_scraper(paper, path):  # noqa: ARG001
     return True
 
 
@@ -219,7 +221,7 @@ def default_scraper():
     return scraper
 
 
-async def a_search_papers(
+async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     query,
     limit=10,
     pdir=os.curdir,
@@ -285,7 +287,7 @@ async def a_search_papers(
             "engine": "google_scholar",
             "num": 20,
             "start": _offset,
-            # TODO - add offset and limit here
+            # TODO - add offset and limit here  # noqa: TD004
         }
 
     if year is not None and search_type == "default":
@@ -329,7 +331,7 @@ async def a_search_papers(
         # check if its in the environment
         with contextlib.suppress(KeyError):
             ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
-    async with ThrottledClientSession(
+    async with ThrottledClientSession(  # noqa: SIM117
         rate_limit=(
             90 if "x-api-key" in ssheader or search_type == "google" else 15 / 60
         ),
@@ -339,11 +341,11 @@ async def a_search_papers(
             url=google_endpoint if search_type == "google" else endpoint,
             params=google_params if search_type == "google" else params,
         ) as response:
-            if response.status != 200:
-                if response.status == 404 and search_type == "doi":
+            if response.status != 200:  # noqa: PLR2004
+                if response.status == 404 and search_type == "doi":  # noqa: PLR2004
                     raise DOINotFoundError(f"DOI {query} not found")
                 raise RuntimeError(
-                    f"Error searching papers: {response.status} {response.reason} {await response.text()}"
+                    f"Error searching papers: {response.status} {response.reason} {await response.text()}"  # noqa: E501
                 )
             data = await response.json()
 
@@ -365,7 +367,7 @@ async def a_search_papers(
                     google_pdf_links.append(None)
                     if "resources" in p:
                         for res in p["resources"]:
-                            if "file_format" in res:
+                            if "file_format" in res:  # noqa: SIM102
                                 if res["file_format"] == "PDF":
                                     google_pdf_links[i] = res["link"]
 
@@ -383,15 +385,17 @@ async def a_search_papers(
                         async with ss_sub_session.get(
                             url=endpoint, params=local_p
                         ) as response:
-                            if response.status != 200:
+                            if response.status != 200:  # noqa: PLR2004
                                 logger.warning(
                                     "Error correlating papers from google to semantic scholar:"
                                     f" status {response.status}, reason {response.reason!r},"
                                     f" text {await response.text()!r}."
                                 )
                                 return None
-                            response = await response.json()
-                            if "data" not in response and year is not None:
+                            response = await response.json()  # noqa: PLW2901
+                            if (  # noqa: SIM102
+                                "data" not in response and year is not None
+                            ):
                                 if response["total"] == 0:
                                     logger.info(
                                         f"{title} | {year} not found. Now trying without year"
@@ -400,13 +404,13 @@ async def a_search_papers(
                                     async with ss_session.get(
                                         url=endpoint, params=local_p
                                     ) as resp:
-                                        if resp.status != 200:
+                                        if resp.status != 200:  # noqa: PLR2004
                                             logger.warning(
                                                 "Error correlating papers from google"
                                                 "to semantic scholar (no year)"
-                                                f"{response.status} {response.reason} {await response.text()}"
+                                                f"{response.status} {response.reason} {await response.text()}"  # noqa: E501
                                             )
-                                        response = await resp.json()
+                                        response = await resp.json()  # noqa: PLW2901
                             if "data" in response:
                                 if pdf_link is not None:
                                     # google scholar url takes precedence
@@ -441,7 +445,7 @@ async def a_search_papers(
                 papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
             if search_type in ["default", "google"]:
                 logger.info(
-                    f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
+                    f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"  # noqa: E501
                 )
 
             async def process_paper(paper, i):
@@ -524,7 +528,7 @@ def search_papers(
         nest_asyncio.apply()
     try:
         loop = asyncio.get_running_loop()
-    except RuntimeError as e:
+    except RuntimeError as e:  # noqa: F841
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     return loop.run_until_complete(

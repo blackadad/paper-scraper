@@ -342,9 +342,8 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
         if "as_ylo" not in google_params:
             logger.warning(f"Could not parse year {year}")
 
-    paths = {} if _paths is None else _paths
-    if scraper is None:
-        scraper = default_scraper()
+    paths = _paths or {}
+    scraper = scraper or default_scraper()
     ssheader = get_header()
     if semantic_scholar_api_key is not None:
         ssheader["x-api-key"] = semantic_scholar_api_key
@@ -444,10 +443,10 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                             return None
 
                     responses = await asyncio.gather(
-                        *[
+                        *(
                             google2s2(t, y, p)
                             for t, y, p in zip(titles, years, google_pdf_links)
-                        ]
+                        )
                     )
                 data = {"data": [r for r in responses if r is not None]}
                 data["total"] = len(data["data"])

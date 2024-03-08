@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import logging
+import os
 from dataclasses import dataclass
 
 from .headers import get_header
@@ -48,13 +52,20 @@ class Scraper:
             )
         self.sorted_scrapers = sorted_scrapers
 
-    async def scrape(self, paper, path, i=0, logger=None) -> bool:  # noqa: D417
+    async def scrape(
+        self,
+        paper,
+        path: str | os.PathLike,
+        i: int = 0,
+        logger: logging.Logger | None = None,
+    ) -> bool:
         """Scrape a paper which contains data from Semantic Scholar API.
 
         Args:
             paper (dict): A paper object from Semantic Scholar API.
             path (str): The path to save the paper.
             i (int): An index to shift call order to load balance.
+            logger (logging.Logger | None): An optional logger to log the scraping process.
         """
         # want highest priority first
         scrape_result = {s.name: "none" for s in self.scrapers}

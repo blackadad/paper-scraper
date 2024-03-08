@@ -247,7 +247,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     limit=10,
     pdir=os.curdir,
     semantic_scholar_api_key=None,
-    _paths=None,
+    _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
     _limit=100,
     _offset=0,
     logger=None,
@@ -256,7 +256,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     scraper=None,
     batch_size=10,
     search_type="default",
-):
+) -> dict[str | os.PathLike, dict[str, Any]]:
     if not os.path.exists(pdir):
         os.mkdir(pdir)
     if logger is None:
@@ -398,7 +398,9 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     headers=ssheader,
                 ) as ss_sub_session:
                     # Now we need to reconcile with S2 API these results
-                    async def google2s2(title, year, pdf_link):
+                    async def google2s2(
+                        title: str, year: str | None, pdf_link
+                    ) -> dict[str, Any] | None:
                         local_p = params.copy()
                         local_p["query"] = title.replace("-", " ")
                         if year is not None:

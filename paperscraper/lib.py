@@ -478,8 +478,10 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             ) -> tuple[str, dict[str, Any]] | tuple[None, None]:
                 path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
                 success = await scraper.scrape(paper, path, i=i, logger=logger)
-                return path, (
-                    parse_semantic_scholar_metadata(paper) if success else (None, None)
+                return (
+                    (path, parse_semantic_scholar_metadata(paper))
+                    if success
+                    else (None, None)
                 )
 
             # batch them, since we may reach desired limit before all done

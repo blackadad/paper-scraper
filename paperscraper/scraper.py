@@ -67,15 +67,16 @@ class Scraper:
         Args:
             paper (dict): A paper object from Semantic Scholar API.
             path: The path to save the paper.
-            i: An index to shift call order to load balance.
-            logger: An optional logger to log the scraping process.
+            i: Optional index (e.g. batch index of the papers) used to shift
+                the call order to load balance (e.g. 0 starts at scraper
+                function 0, batch 1 starts at scraper function 1, etc.)
+            logger: Optional logger to log the scraping process.
         """
         # want highest priority first
         scrape_result = {s.name: "none" for s in self.scrapers}
         for scrapers in self.sorted_scrapers[::-1]:
             for j in range(len(scrapers)):
-                j = (j + i) % len(scrapers)  # noqa: PLW2901
-                scraper = scrapers[j]
+                scraper = scrapers[(i + j) % len(scrapers)]
                 try:
                     result = await scraper.function(paper, path, **scraper.kwargs)
                     if result and (not scraper.check_pdf or check_pdf(path)):

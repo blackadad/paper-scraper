@@ -473,28 +473,14 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"  # noqa: E501
                 )
 
-            async def scrape_parse_paper(
-                paper: dict[str, Any], i: int
-            ) -> tuple[str, dict[str, Any]] | tuple[None, None]:
-                path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
-                success = await scraper.scrape(paper, path, i=i, logger=logger)
-                return (
-                    (path, parse_semantic_scholar_metadata(paper))
-                    if success
-                    else (None, None)
-                )
-
             # batch them, since we may reach desired limit before all done
             for i in range(0, len(papers), batch_size):
-                results = await asyncio.gather(
-                    *(
-                        scrape_parse_paper(p, i + j)
-                        for j, p in enumerate(papers[i : i + batch_size])
-                    )
+                results = await scraper.batch_scrape(
+                    papers[i : i + batch_size], pdir, i, logger
                 )
-                for path, info in results:
-                    if path is not None:
-                        paths[path] = info
+                for r in results:
+                    if r is not False:
+                        paths[r[0]] = r[1]
                 # if we have enough, stop
                 if len(paths) >= limit:
                     break

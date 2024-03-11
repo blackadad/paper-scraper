@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Any, Literal
+
+from paperscraper.lib import parse_semantic_scholar_metadata
 
 from .headers import get_header
 from .utils import ThrottledClientSession, check_pdf
@@ -95,6 +99,40 @@ class Scraper:
             if self.callback is not None:
                 await self.callback(paper["title"], scrape_result)
         return False
+
+    async def batch_scrape(
+        self,
+        papers: list[dict[str, Any]],
+        paper_file_dump_dir: str | os.PathLike,
+        batch_index: int = 0,
+        logger: logging.Logger | None = None,
+    ) -> list[tuple[str, dict[str, Any]] | Literal[False]]:
+        """
+        Scrape given a list of raw Semantic Scholar information.
+
+        Args:
+            papers: List of raw Semantic Scholar paper metadata.
+            paper_file_dump_dir: Directory where papers will be downloaded.
+            batch_index: Optional batch index of the papers, see scrape's
+                docstring for more info.
+            logger: Optional logger to log the scraping process.
+
+        Returns:
+            List of two-tuples containing the path to the downloaded paper and
+                the parsed paper metadata if successful scrape, or False if the
+                paper scraping was unsuccessful.
+        """
+
+        async def scrape_parse(
+            paper: dict[str, Any], i: int
+        ) -> tuple[str, dict[str, Any]] | Literal[False]:
+            path = os.path.join(paper_file_dump_dir, f'{paper["paperId"]}.pdf')
+            success = await self.scrape(paper, path, i=i, logger=logger)
+            return (path, parse_semantic_scholar_metadata(paper)) if success else False
+
+        return await asyncio.gather(
+            *(scrape_parse(paper=p, i=batch_index + j) for j, p in enumerate(papers))
+        )
 
     async def close(self) -> None:
         for scraper in self.scrapers:

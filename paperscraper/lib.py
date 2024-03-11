@@ -259,7 +259,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     scraper=None,
     batch_size=10,
     search_type="default",
-) -> dict[str | os.PathLike, dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     if not os.path.exists(pdir):
         os.mkdir(pdir)
     if logger is None:

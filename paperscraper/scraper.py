@@ -3,11 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
-
-from paperscraper.lib import parse_semantic_scholar_metadata
 
 from .headers import get_header
 from .utils import ThrottledClientSession, check_pdf
@@ -102,37 +100,53 @@ class Scraper:
 
     async def batch_scrape(
         self,
-        papers: Iterable[dict[str, Any]],
+        papers: Sequence[dict[str, Any]],
         paper_file_dump_dir: str | os.PathLike,
-        batch_index: int = 0,
+        paper_parser: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        batch_size: int = 10,
+        limit: int | None = None,
         logger: logging.Logger | None = None,
-    ) -> list[tuple[str, dict[str, Any]] | Literal[False]]:
+    ) -> dict[str, dict[str, Any]]:
         """
-        Scrape given a list of raw Semantic Scholar information.
+        Scrape given a list of metadata.
 
         Args:
-            papers: List of raw Semantic Scholar paper metadata.
+            papers: List of raw paper metadata.
             paper_file_dump_dir: Directory where papers will be downloaded.
-            batch_index: Optional batch index of the papers, see scrape's
-                docstring for more info.
+            paper_parser: Optional function to process the raw paper metadata
+                after scraping.
+            batch_size: Batch size to use when scraping, within a batch
+                scraping is parallelized.
+            limit: Optional limit to the number of papers to scrape.
             logger: Optional logger to log the scraping process.
 
         Returns:
-            List of two-tuples containing the path to the downloaded paper and
-                the parsed paper metadata if successful scrape, or False if the
-                paper scraping was unsuccessful.
+            Dictionary mapping path to downloaded paper to parsed metadata.
         """
+        parser = paper_parser or (lambda x: x)
 
         async def scrape_parse(
             paper: dict[str, Any], i: int
         ) -> tuple[str, dict[str, Any]] | Literal[False]:
             path = os.path.join(paper_file_dump_dir, f'{paper["paperId"]}.pdf')
             success = await self.scrape(paper, path, i=i, logger=logger)
-            return (path, parse_semantic_scholar_metadata(paper)) if success else False
+            return (path, parser(paper)) if success else False
 
-        return await asyncio.gather(
-            *(scrape_parse(paper=p, i=batch_index + j) for j, p in enumerate(papers))
-        )
+        aggregated = {}
+        for i in range(0, len(papers), batch_size):
+            aggregated |= {
+                r[0]: r[1]
+                for r in await asyncio.gather(
+                    *(
+                        scrape_parse(paper=p, i=i + j)
+                        for j, p in enumerate(papers[i : i + batch_size])
+                    )
+                )
+                if r is not False
+            }
+            if limit is not None and len(aggregated) >= limit:
+                break
+        return aggregated
 
     async def close(self) -> None:
         for scraper in self.scrapers:

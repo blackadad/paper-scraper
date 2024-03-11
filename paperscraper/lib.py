@@ -474,16 +474,16 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 )
 
             # batch them, since we may reach desired limit before all done
-            for i in range(0, len(papers), batch_size):
-                results = await scraper.batch_scrape(
-                    papers[i : i + batch_size], pdir, i, logger
+            paths.update(
+                await scraper.batch_scrape(
+                    papers,
+                    pdir,
+                    parse_semantic_scholar_metadata,
+                    batch_size,
+                    limit,
+                    logger,
                 )
-                for r in results:
-                    if r is not False:
-                        paths[r[0]] = r[1]
-                # if we have enough, stop
-                if len(paths) >= limit:
-                    break
+            )
     if (
         search_type in ["default", "google"]
         and len(paths) < limit

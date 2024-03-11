@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -102,7 +102,7 @@ class Scraper:
 
     async def batch_scrape(
         self,
-        papers: list[dict[str, Any]],
+        papers: Iterable[dict[str, Any]],
         paper_file_dump_dir: str | os.PathLike,
         batch_index: int = 0,
         logger: logging.Logger | None = None,

@@ -1,3 +1,37 @@
+[project]
+authors = [
+    {email = "hello@futureforecasts.io", name = "blackadad"},
+]
+# Full list: https://pypi.python.org/pypi?%3Aaction=list_classifiers
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python",
+]
+dependencies = [
+    "aiohttp",
+    "pybtex",
+    "pypdf",
+]
+description = "LLM Chain for answering questions from docs"
+keywords = ["question answering"]
+license = {file = "LICENSE"}
+maintainers = [
+    {email = "hello@futureforecasts.io", name = "blackadad"},
+    {email = "jamesbraza@gmail.com", name = "James Braza"},
+]
+name = "paper-scraper"
+readme = "README.md"
+requires-python = ">=3.8"
+urls = {repository = "https://github.com/blackadad/paper-scraper"}
+version = "1.3.2"
+
 [tool.codespell]
 check-filenames = true
 check-hidden = true
@@ -90,6 +124,9 @@ max-doc-length = 97  # Match line-length
 # Whether to use Google-style or NumPy-style conventions or the PEP257
 # defaults when analyzing docstring sections.
 convention = "google"
+
+[tool.setuptools.packages.find]
+include = ["paperscraper*"]
 
 [tool.tomlsort]
 all = true

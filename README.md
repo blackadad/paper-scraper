@@ -11,6 +11,8 @@ pip install git+https://github.com/blackadad/paper-scraper.git
 ## Usage
 
 ```python
+import paperscraper
+
 papers = paperscraper.search_papers('bayesian model selection',
                                     limit=10,
                                     pdir='downloaded-papers')

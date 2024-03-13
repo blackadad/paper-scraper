@@ -259,7 +259,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     scraper=None,
     batch_size=10,
     search_type="default",
-) -> dict[str | os.PathLike, dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
     if not os.path.exists(pdir):
         os.mkdir(pdir)
     if logger is None:
@@ -473,31 +473,17 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"  # noqa: E501
                 )
 
-            async def scrape_parse_paper(
-                paper: dict[str, Any], i: int
-            ) -> tuple[str, dict[str, Any]] | tuple[None, None]:
-                path = os.path.join(pdir, f'{paper["paperId"]}.pdf')
-                success = await scraper.scrape(paper, path, i=i, logger=logger)
-                return (
-                    (path, parse_semantic_scholar_metadata(paper))
-                    if success
-                    else (None, None)
-                )
-
             # batch them, since we may reach desired limit before all done
-            for i in range(0, len(papers), batch_size):
-                results = await asyncio.gather(
-                    *(
-                        scrape_parse_paper(p, i + j)
-                        for j, p in enumerate(papers[i : i + batch_size])
-                    )
+            paths.update(
+                await scraper.batch_scrape(
+                    papers,
+                    pdir,
+                    parse_semantic_scholar_metadata,
+                    batch_size,
+                    limit,
+                    logger,
                 )
-                for path, info in results:
-                    if path is not None:
-                        paths[path] = info
-                # if we have enough, stop
-                if len(paths) >= limit:
-                    break
+            )
     if (
         search_type in ["default", "google"]
         and len(paths) < limit

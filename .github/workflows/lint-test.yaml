@@ -23,3 +23,4 @@ jobs:
         run: pytest
         env:
           SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+          SEMANTIC_SCHOLAR_API_KEY: ${{ secrets.SEMANTIC_SCHOLAR_API_KEY }}

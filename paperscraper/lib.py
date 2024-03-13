@@ -9,6 +9,8 @@ import sys
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from aiohttp import ClientSession
+
 from .exceptions import DOINotFoundError
 from .headers import get_header
 from .log_formatter import CustomFormatter
@@ -74,7 +76,7 @@ def format_bibtex(bibtex, key):
         return bd.entries[key].fields["title"]
 
 
-async def likely_pdf(response):
+async def likely_pdf(response) -> bool:
     try:
         text = await response.text()
         if "Invalid article ID" in text:
@@ -86,21 +88,20 @@ async def likely_pdf(response):
     return True
 
 
-async def arxiv_to_pdf(arxiv_id, path, session):
+async def arxiv_to_pdf(arxiv_id, path, session: ClientSession) -> None:
     url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
     # download
     async with session.get(url, allow_redirects=True) as r:
-        if r.status != 200 or not await likely_pdf(r):  # noqa: PLR2004
+        if not r.ok or not await likely_pdf(r):
             raise RuntimeError(f"No paper with arxiv id {arxiv_id}")
         with open(path, "wb") as f:  # noqa: ASYNC101
             f.write(await r.read())
 
 
-async def link_to_pdf(url, path, session):
+async def link_to_pdf(url, path, session: ClientSession) -> None:
     # download
-    pdf_link = None
     async with session.get(url, allow_redirects=True) as r:
-        if r.status != 200:  # noqa: PLR2004
+        if not r.ok:
             raise RuntimeError(f"Unable to download {url}, status code {r.status}")
         if "pdf" in r.headers["Content-Type"]:
             with open(path, "wb") as f:  # noqa: ASYNC101
@@ -125,7 +126,7 @@ async def link_to_pdf(url, path, session):
                 async with session.get(
                     pdf_link, allow_redirects=True
                 ) as r:  # noqa: PLW2901
-                    if r.status != 200:  # noqa: PLR2004
+                    if not r.ok:
                         raise RuntimeError(
                             f"Unable to download {pdf_link}, status code {r.status}"
                         )
@@ -138,23 +139,25 @@ async def link_to_pdf(url, path, session):
                 raise RuntimeError(f"Malformed URL {pdf_link} -- {url}") from exc
 
 
-async def find_pmc_pdf_link(pmc_id, session):
+async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:
     url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}"
     async with session.get(url) as r:
-        if r.status != 200:  # noqa: PLR2004
+        if not r.ok:
             raise RuntimeError(f"No paper with pmc id {pmc_id}. {url} {r.status}")
         html_text = await r.text()
         pdf_link = re.search(r'href="(.*\.pdf)"', html_text)
         if pdf_link is None:
-            raise RuntimeError(f"No PDF link found for pmc id {pmc_id}. {url}")
+            raise RuntimeError(
+                f"No PDF link found for PubMed Central ID {pmc_id}. {url}"
+            )
         return f"https://www.ncbi.nlm.nih.gov{pdf_link.group(1)}"
 
 
-async def pubmed_to_pdf(pubmed_id, path, session):
+async def pubmed_to_pdf(pubmed_id, path, session: ClientSession) -> None:
     url = f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/"
 
     async with session.get(url) as r:
-        if r.status != 200:  # noqa: PLR2004
+        if not r.ok:
             raise RuntimeError(
                 f"Error fetching PMC ID for PubMed ID {pubmed_id}. {r.status}"
             )
@@ -164,19 +167,21 @@ async def pubmed_to_pdf(pubmed_id, path, session):
             raise RuntimeError(f"No PMC ID found for PubMed ID {pubmed_id}.")
         pmc_id = pmc_id_match.group(0)
     pmc_id = pmc_id[3:]
-    return await pmc_to_pdf(pmc_id, path, session)
+    await pmc_to_pdf(pmc_id, path, session)
 
 
-async def pmc_to_pdf(pmc_id, path, session):
+async def pmc_to_pdf(pmc_id, path, session: ClientSession) -> None:
     pdf_url = await find_pmc_pdf_link(pmc_id, session)
     async with session.get(pdf_url, allow_redirects=True) as r:
-        if r.status != 200 or not await likely_pdf(r):  # noqa: PLR2004
-            raise RuntimeError(f"No paper with pmc id {pmc_id}. {pdf_url} {r.status}")
+        if not r.ok or not await likely_pdf(r):
+            raise RuntimeError(
+                f"No paper with PubMed Central ID {pmc_id}. {pdf_url} {r.status}"
+            )
         with open(path, "wb") as f:  # noqa: ASYNC101
             f.write(await r.read())
 
 
-async def arxiv_scraper(paper, path, session):
+async def arxiv_scraper(paper, path, session: ClientSession) -> bool:
     if "ArXiv" not in paper["externalIds"]:
         return False
     arxiv_id = paper["externalIds"]["ArXiv"]
@@ -184,7 +189,7 @@ async def arxiv_scraper(paper, path, session):
     return True
 
 
-async def pmc_scraper(paper, path, session):
+async def pmc_scraper(paper, path, session: ClientSession) -> bool:
     if "PubMedCentral" not in paper["externalIds"]:
         return False
     pmc_id = paper["externalIds"]["PubMedCentral"]
@@ -192,7 +197,7 @@ async def pmc_scraper(paper, path, session):
     return True
 
 
-async def pubmed_scraper(paper, path, session):
+async def pubmed_scraper(paper, path, session: ClientSession) -> bool:
     if "PubMed" not in paper["externalIds"]:
         return False
     pubmed_id = paper["externalIds"]["PubMed"]
@@ -200,7 +205,7 @@ async def pubmed_scraper(paper, path, session):
     return True
 
 
-async def openaccess_scraper(paper, path, session):
+async def openaccess_scraper(paper, path, session: ClientSession) -> bool:
     # NOTE: paper may not have the key 'openAccessPdf', or its value may be None
     url = (paper.get("openAccessPdf") or {}).get("url")
     if not url:
@@ -209,7 +214,7 @@ async def openaccess_scraper(paper, path, session):
     return True
 
 
-async def local_scraper(paper, path):  # noqa: ARG001
+async def local_scraper(paper, path) -> bool:  # noqa: ARG001
     return True
 
 
@@ -364,7 +369,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             url=google_endpoint if search_type == "google" else endpoint,
             params=google_params if search_type == "google" else params,
         ) as response:
-            if response.status != 200:  # noqa: PLR2004
+            if not response.ok:
                 if response.status == 404 and search_type == "doi":  # noqa: PLR2004
                     raise DOINotFoundError(f"DOI {query} not found")
                 raise RuntimeError(
@@ -410,7 +415,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                         async with ss_sub_session.get(
                             url=endpoint, params=local_p
                         ) as response:
-                            if response.status != 200:  # noqa: PLR2004
+                            if not response.ok:
                                 logger.warning(
                                     "Error correlating papers from google to semantic scholar:"
                                     f" status {response.status}, reason {response.reason!r},"
@@ -429,7 +434,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                                     async with ss_session.get(
                                         url=endpoint, params=local_p
                                     ) as resp:
-                                        if resp.status != 200:  # noqa: PLR2004
+                                        if not resp.ok:
                                             logger.warning(
                                                 "Error correlating papers from google"
                                                 "to semantic scholar (no year)"

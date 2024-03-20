@@ -383,23 +383,21 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 papers = data["organic_results"]
                 year_extract = re.compile(r"\b\d{4}\b")
                 titles = [p["title"] for p in papers]
-                years = [None for p in papers]
+                years: list[str | None] = [None] * len(papers)
                 for i, p in enumerate(papers):
                     match = year_extract.findall(p["publication_info"]["summary"])
                     if len(match) > 0:
                         years[i] = match[0]
 
                 # get PDF resources
-                google_pdf_links = []
+                google_pdf_links: list[str | None] = [None] * len(papers)
                 for i, p in enumerate(papers):
-                    google_pdf_links.append(None)
                     if "resources" in p:
                         for res in p["resources"]:
-                            if "file_format" in res:  # noqa: SIM102
-                                if res["file_format"] == "PDF":
-                                    google_pdf_links[i] = res["link"]
+                            if res.get("file_format") == "PDF":
+                                google_pdf_links[i] = res["link"]
 
-                # want this separate, since ss is rate_limit for google
+                # want this separate, since ss is rate_limit for Google
                 async with ThrottledClientSession(
                     rate_limit=90 if "x-api-key" in ssheader else 15 / 60,
                     headers=ssheader,

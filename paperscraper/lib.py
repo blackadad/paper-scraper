@@ -89,9 +89,10 @@ async def likely_pdf(response) -> bool:
 
 
 async def arxiv_to_pdf(arxiv_id, path, session: ClientSession) -> None:
-    url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
     # download
-    async with session.get(url, allow_redirects=True) as r:
+    async with session.get(
+        f"https://arxiv.org/pdf/{arxiv_id}.pdf", allow_redirects=True
+    ) as r:
         if not r.ok or not await likely_pdf(r):
             raise RuntimeError(f"No paper with arxiv id {arxiv_id}")
         with open(path, "wb") as f:  # noqa: ASYNC101
@@ -154,9 +155,7 @@ async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:
 
 
 async def pubmed_to_pdf(pubmed_id, path, session: ClientSession) -> None:
-    url = f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/"
-
-    async with session.get(url) as r:
+    async with session.get(f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/") as r:
         if not r.ok:
             raise RuntimeError(
                 f"Error fetching PMC ID for PubMed ID {pubmed_id}. {r.status}"

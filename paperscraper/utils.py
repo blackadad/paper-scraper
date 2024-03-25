@@ -112,9 +112,9 @@ def check_pdf(path, verbose: Union[bool, Logger] = False) -> bool:  # noqa: FA10
     try:
         pdf = pypdf.PdfReader(path)  # noqa: F841
     except (pypdf.errors.PyPdfError, ValueError) as e:
-        if verbose:
-            (print if isinstance(verbose, bool) else verbose.error)(
-                f"PDF at {path} is corrupt: {e}"
-            )
+        if verbose and isinstance(verbose, bool):
+            print(f"PDF at {path} is corrupt: {e}")
+        elif verbose:
+            verbose.exception(f"PDF at {path} is corrupt.", exc_info=e)
         return False
     return True

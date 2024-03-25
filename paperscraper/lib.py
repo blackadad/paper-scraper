@@ -9,7 +9,7 @@ import sys
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from aiohttp import ClientSession
+from aiohttp import ClientSession, InvalidURL
 
 from .exceptions import DOINotFoundError
 from .headers import get_header
@@ -135,7 +135,7 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:
                             f.write(await r.read())
                         return
                     raise RuntimeError(f"No PDF found from {pdf_link}")
-            except TypeError as exc:
+            except (TypeError, InvalidURL) as exc:
                 raise RuntimeError(f"Malformed URL {pdf_link} -- {url}") from exc
 
 

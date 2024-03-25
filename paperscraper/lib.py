@@ -107,36 +107,33 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:
             with open(path, "wb") as f:  # noqa: ASYNC101
                 f.write(await r.read())
             return
-        else:  # noqa: RET505
-            # try to find a pdf link
-            html_text = await r.text()
-            # should have pdf somewhere (could not be at end)
-            epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
-            if epdf_link is None:
-                pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
-                # try to find epdf link
-                if pdf_link is None:
-                    raise RuntimeError(f"No PDF link found for {url}")
-                pdf_link = pdf_link.group(1)
-            else:
-                # strip the epdf
-                pdf_link = epdf_link.group(1).replace("epdf", "pdf")
+        # try to find a pdf link
+        html_text = await r.text()
+        # should have pdf somewhere (could not be at end)
+        epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
+        if epdf_link is None:
+            pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
+            # try to find epdf link
+            if pdf_link is None:
+                raise RuntimeError(f"No PDF link found for {url}")
+            pdf_link = pdf_link.group(1)
+        else:
+            # strip the epdf
+            pdf_link = epdf_link.group(1).replace("epdf", "pdf")
 
-            try:
-                async with session.get(
-                    pdf_link, allow_redirects=True
-                ) as r:  # noqa: PLW2901
-                    if not r.ok:
-                        raise RuntimeError(
-                            f"Unable to download {pdf_link}, status code {r.status}"
-                        )
-                    if "pdf" in r.headers["Content-Type"]:
-                        with open(path, "wb") as f:  # noqa: ASYNC101
-                            f.write(await r.read())
-                        return
-                    raise RuntimeError(f"No PDF found from {pdf_link}")
-            except (TypeError, InvalidURL) as exc:
-                raise RuntimeError(f"Malformed URL {pdf_link} -- {url}") from exc
+    try:
+        async with session.get(pdf_link, allow_redirects=True) as r:
+            if not r.ok:
+                raise RuntimeError(
+                    f"Unable to download {pdf_link}, status code {r.status}"
+                )
+            if "pdf" in r.headers["Content-Type"]:
+                with open(path, "wb") as f:  # noqa: ASYNC101
+                    f.write(await r.read())
+                return
+            raise RuntimeError(f"No PDF found from {pdf_link}")
+    except (TypeError, InvalidURL) as exc:
+        raise RuntimeError(f"Malformed URL {pdf_link} -- {url}") from exc
 
 
 async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:

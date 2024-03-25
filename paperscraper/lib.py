@@ -250,6 +250,21 @@ def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+SEMANTIC_SCHOLAR_API_FIELDS: str = ",".join(
+    [
+        "citationStyles",
+        "externalIds",
+        "url",
+        "openAccessPdf",
+        "year",
+        "isOpenAccess",
+        "influentialCitationCount",
+        "citationCount",
+        "title",
+    ]
+)
+
+
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     query,
     limit=10,
@@ -275,21 +290,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             ch = logging.StreamHandler()
             ch.setFormatter(CustomFormatter())
             logger.addHandler(ch)
-    params = {
-        "fields": ",".join(
-            [
-                "citationStyles",
-                "externalIds",
-                "url",
-                "openAccessPdf",
-                "year",
-                "isOpenAccess",
-                "influentialCitationCount",
-                "citationCount",
-                "title",
-            ]
-        ),
-    }
+    params = {"fields": SEMANTIC_SCHOLAR_API_FIELDS}
     if search_type == "default":
         endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
         params["query"] = query.replace("-", " ")

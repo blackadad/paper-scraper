@@ -81,7 +81,9 @@ class Scraper:
                 scraper = scrapers[(i + j) % len(scrapers)]
                 try:
                     result = await scraper.function(paper, path, **scraper.kwargs)
-                    if result and (not scraper.check_pdf or check_pdf(path)):
+                    if result and (
+                        not scraper.check_pdf or check_pdf(path, logger or False)
+                    ):
                         scrape_result[scraper.name] = "success"
                         if logger is not None:
                             logger.debug(

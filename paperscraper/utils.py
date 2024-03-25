@@ -3,7 +3,8 @@ import contextlib
 import os
 import random
 import time
-from typing import Optional
+from logging import Logger
+from typing import Optional, Union
 
 import aiohttp
 import pypdf
@@ -105,13 +106,15 @@ class ThrottledClientSession(aiohttp.ClientSession):
         return response
 
 
-def check_pdf(path, verbose=False):
+def check_pdf(path, verbose: Union[bool, Logger] = False) -> bool:  # noqa: FA100
     if not os.path.exists(path):
         return False
     try:
         pdf = pypdf.PdfReader(path)  # noqa: F841
     except (pypdf.errors.PyPdfError, ValueError) as e:
-        if verbose:
+        if verbose and isinstance(verbose, bool):
             print(f"PDF at {path} is corrupt: {e}")
+        elif verbose:
+            verbose.exception(f"PDF at {path} is corrupt.", exc_info=e)
         return False
     return True

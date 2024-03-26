@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import random
 
 # ruff: noqa: E501
@@ -1006,9 +1008,9 @@ Mozilla/5.0 (iPhone; CPU iPhone OS 8_4 like Mac OS X) AppleWebKit/600.1.4 (KHTML
 """
 
 
-def get_user_agent():
+def get_user_agent() -> str:
     return random.choice(user_agents.splitlines())
 
 
-def get_header():
+def get_header() -> dict[str, str]:
     return {"User-Agent": get_user_agent()}

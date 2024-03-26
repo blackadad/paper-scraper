@@ -179,7 +179,9 @@ class Test10(IsolatedAsyncioTestCase):
     async def test_scraper_paper_search(self):
         # make sure default scraper doesn't duplicate scrapers
         papers = await paperscraper.a_search_papers(
-            "649def34f8be52c8b66281af98ae884c09aef38b", limit=1, search_type="paper"
+            "649def34f8be52c8b66281af98ae884c09aef38b",
+            limit=1,
+            search_type="paper_recommendations",
         )
         assert len(papers) >= 1
 

@@ -259,6 +259,7 @@ SEMANTIC_SCHOLAR_API_FIELDS: str = ",".join(
         "title",
     ]
 )
+SEMANTIC_SCHOLAR_BASE_URL = "https://api.semanticscholar.org"
 
 
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
@@ -288,23 +289,25 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             logger.addHandler(ch)
     params = {"fields": SEMANTIC_SCHOLAR_API_FIELDS}
     if search_type == "default":
-        endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
+        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/search"
         params["query"] = query.replace("-", " ")
         params["offset"] = _offset
         params["limit"] = _limit
     elif search_type == "paper":
-        endpoint = f"https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{query}"
+        endpoint = (
+            f"{SEMANTIC_SCHOLAR_BASE_URL}/recommendations/v1/papers/forpaper/{query}"
+        )
         params["limit"] = _limit
     elif search_type == "doi":
-        endpoint = f"https://api.semanticscholar.org/graph/v1/paper/DOI:{query}"
+        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/DOI:{query}"
     elif search_type == "future_citations":
-        endpoint = f"https://api.semanticscholar.org/graph/v1/paper/{query}/citations"
+        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/{query}/citations"
         params["limit"] = _limit
     elif search_type == "past_references":
-        endpoint = f"https://api.semanticscholar.org/graph/v1/paper/{query}/references"
+        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/{query}/references"
         params["limit"] = _limit
     elif search_type == "google":
-        endpoint = "https://api.semanticscholar.org/graph/v1/paper/search"
+        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/search"
         params["limit"] = 1
         google_endpoint = "https://serpapi.com/search.json"
         google_params = {

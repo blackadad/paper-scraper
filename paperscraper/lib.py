@@ -266,7 +266,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     query,
     limit=10,
     pdir=os.curdir,
-    semantic_scholar_api_key=None,
+    semantic_scholar_api_key: str | None = None,
     _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
     _limit=100,
     _offset=0,

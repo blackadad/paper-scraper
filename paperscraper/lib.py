@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from collections.abc import Awaitable, Callable
+from enum import IntEnum, auto
 from typing import Any
 
 from aiohttp import ClientSession, InvalidURL
@@ -262,20 +263,74 @@ SEMANTIC_SCHOLAR_API_FIELDS: str = ",".join(
 SEMANTIC_SCHOLAR_BASE_URL = "https://api.semanticscholar.org"
 
 
+class SematicScholarSearchType(IntEnum):
+    DEFAULT = auto()
+    PAPER = auto()
+    PAPER_RECOMMENDATIONS = auto()
+    DOI = auto()
+    FUTURE_CITATIONS = auto()
+    PAST_REFERENCES = auto()
+    GOOGLE = auto()
+
+    def make_url_params(  # noqa: PLR0911
+        self,
+        params: dict[str, Any],
+        query: str,
+        offset: int,
+        limit: int,
+        include_base_url: bool = True,
+    ) -> tuple[str, dict[str, Any]]:
+        """
+        Make the target URL and in-place update the input URL parameters.
+
+        Args:
+            params: URL parameters to in-place update.
+            query: Either a search query or a Semantic Scholar paper ID.
+            offset: Offset to place in the URL parameters for the default search type.
+            limit: Limit to place in the URL parameters for some search types.
+            include_base_url: Set True (default) to include the base URL.
+
+        Returns:
+            Two-tuple of URL and URL parameters.
+        """
+        base = SEMANTIC_SCHOLAR_BASE_URL if include_base_url else ""
+        if self == SematicScholarSearchType.DEFAULT:
+            params["query"] = query.replace("-", " ")
+            params["offset"] = offset
+            params["limit"] = limit
+            return f"{base}/graph/v1/paper/search", params
+        if self == SematicScholarSearchType.PAPER:
+            return f"{base}/graph/v1/paper/{query}", params
+        if self == SematicScholarSearchType.PAPER_RECOMMENDATIONS:
+            return f"{base}/recommendations/v1/papers/forpaper/{query}", params
+        if self == SematicScholarSearchType.DOI:
+            return f"{base}/graph/v1/paper/DOI:{query}", params
+        if self == SematicScholarSearchType.FUTURE_CITATIONS:
+            params["limit"] = limit
+            return f"{base}/graph/v1/paper/{query}/citations", params
+        if self == SematicScholarSearchType.PAST_REFERENCES:
+            params["limit"] = limit
+            return f"{base}/graph/v1/paper/{query}/references", params
+        if self == SematicScholarSearchType.GOOGLE:
+            params["limit"] = 1
+            return f"{base}/graph/v1/paper/search", params
+        raise NotImplementedError
+
+
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
-    query,
+    query: str,
     limit=10,
     pdir=os.curdir,
     semantic_scholar_api_key: str | None = None,
     _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
-    _limit=100,
-    _offset=0,
-    logger=None,
-    year=None,
-    verbose=False,
-    scraper=None,
-    batch_size=10,
-    search_type="default",
+    _limit: int = 100,
+    _offset: int = 0,
+    logger: logging.Logger | None = None,
+    year: str | None = None,
+    verbose: bool = False,
+    scraper: Scraper | None = None,
+    batch_size: int = 10,
+    search_type: str = "default",
 ) -> dict[str, dict[str, Any]]:
     if not os.path.exists(pdir):
         os.mkdir(pdir)
@@ -288,27 +343,10 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             ch.setFormatter(CustomFormatter())
             logger.addHandler(ch)
     params = {"fields": SEMANTIC_SCHOLAR_API_FIELDS}
-    if search_type == "default":
-        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/search"
-        params["query"] = query.replace("-", " ")
-        params["offset"] = _offset
-        params["limit"] = _limit
-    elif search_type == "paper":
-        endpoint = (
-            f"{SEMANTIC_SCHOLAR_BASE_URL}/recommendations/v1/papers/forpaper/{query}"
-        )
-        params["limit"] = _limit
-    elif search_type == "doi":
-        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/DOI:{query}"
-    elif search_type == "future_citations":
-        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/{query}/citations"
-        params["limit"] = _limit
-    elif search_type == "past_references":
-        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/{query}/references"
-        params["limit"] = _limit
-    elif search_type == "google":
-        endpoint = f"{SEMANTIC_SCHOLAR_BASE_URL}/graph/v1/paper/search"
-        params["limit"] = 1
+    endpoint, params = SematicScholarSearchType[search_type.upper()].make_url_params(
+        params, query, _offset, _limit
+    )
+    if search_type == "google":
         google_endpoint = "https://serpapi.com/search.json"
         google_params = {
             "q": query,
@@ -318,6 +356,11 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             "start": _offset,
             # TODO - add offset and limit here  # noqa: TD004
         }
+    elif search_type == "paper":
+        raise NotImplementedError(
+            f"Only added 'paper' search type to {SematicScholarSearchType.__name__},"
+            f" but not yet to this function in general."
+        )
 
     if year is not None and search_type == "default":
         # need to really make sure year is correct
@@ -457,7 +500,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 data = {"data": [r for r in responses if r is not None]}
                 data["total"] = len(data["data"])
             field = "data"
-            if search_type == "paper":
+            if search_type == "paper_recommendations":
                 field = "recommendedPapers"
             elif search_type == "doi":
                 data = {"data": [data]}

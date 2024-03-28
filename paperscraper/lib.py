@@ -99,6 +99,16 @@ async def arxiv_to_pdf(arxiv_id, path, session: ClientSession) -> None:
             f.write(await r.read())
 
 
+async def xiv_to_pdf(doi, path, domain: str, session: ClientSession) -> None:
+    async with session.get(
+        f"https://{domain}/content/{doi}.full.pdf", allow_redirects=True
+    ) as r:
+        if r.ok and await likely_pdf(r):
+            with open(path, "wb") as f:  # noqa: ASYNC101
+                f.write(await r.read())
+            return
+
+
 async def link_to_pdf(url, path, session: ClientSession) -> None:
     # download
     async with session.get(url, allow_redirects=True) as r:
@@ -110,17 +120,26 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:
             return
         # try to find a pdf link
         html_text = await r.text()
-        # should have pdf somewhere (could not be at end)
-        epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
-        if epdf_link is None:
-            pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
-            # try to find epdf link
-            if pdf_link is None:
-                raise RuntimeError(f"No PDF link found for {url}")
-            pdf_link = pdf_link.group(1)
+        # try for chemrxiv special tag
+        pdf_link = re.search(
+            r'content="(https://chemrxiv.org/engage/api-gateway/chemrxiv/assets.*\.pdf)"',
+            html_text,
+        )
+        if pdf_link is None:
+            # should have pdf somewhere (could not be at end)
+            epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
+            if epdf_link is None:
+                pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
+                if pdf_link is not None:
+                    pdf_link = pdf_link.group(1)
+            else:
+                # strip the epdf
+                pdf_link = epdf_link.group(1).replace("epdf", "pdf")
+                # try to find epdf link
         else:
-            # strip the epdf
-            pdf_link = epdf_link.group(1).replace("epdf", "pdf")
+            pdf_link = pdf_link.group(1)
+        if pdf_link is None:
+            raise RuntimeError(f"No PDF link found for {url}")
 
     try:
         async with session.get(pdf_link, allow_redirects=True) as r:
@@ -185,6 +204,38 @@ async def arxiv_scraper(paper, path, session: ClientSession) -> bool:
     return True
 
 
+async def xiv_scraper(paper, path, domain: str, session: ClientSession) -> bool:
+    if "DOI" not in paper["externalIds"]:
+        return False
+    doi = paper["externalIds"]["DOI"]
+    # check if it has biorxiv/medrxiv prefix
+    if not doi.startswith("10.1101/"):
+        return False
+    await xiv_to_pdf(doi, path, domain, session)
+    return True
+
+
+async def medrxiv_scraper(paper, path, session: ClientSession) -> bool:
+    return await xiv_scraper(paper, path, "www.medrxiv.org", session)
+
+
+async def biorxiv_scraper(paper, path, session: ClientSession) -> bool:
+    return await xiv_scraper(paper, path, "www.biorxiv.org", session)
+
+
+async def chemrxiv_scraper(paper, path, session: ClientSession) -> bool:
+    if "DOI" not in paper["externalIds"]:
+        return False
+    doi = paper["externalIds"]["DOI"]
+    # check if it has chemrxiv prefix
+    if "chemrxiv" not in doi:
+        return False
+    # get resolved doi
+    link = f"https://doi.org/{doi}"
+    await link_to_pdf(link, path, session)
+    return True
+
+
 async def pmc_scraper(paper, path, session: ClientSession) -> bool:
     if "PubMedCentral" not in paper["externalIds"]:
         return False
@@ -217,12 +268,20 @@ async def local_scraper(paper, path) -> bool:  # noqa: ARG001
 def default_scraper(
     callback: Callable[[str, dict[str, str]], Awaitable] | None = None
 ) -> Scraper:
+
     scraper = Scraper(callback=callback)
     scraper.register_scraper(arxiv_scraper, attach_session=True, rate_limit=30 / 60)
-    scraper.register_scraper(pmc_scraper, rate_limit=30 / 60, attach_session=True)
-    scraper.register_scraper(pubmed_scraper, rate_limit=30 / 60, attach_session=True)
+    scraper.register_scraper(medrxiv_scraper, attach_session=True, rate_limit=30 / 60)
+    scraper.register_scraper(biorxiv_scraper, attach_session=True, rate_limit=30 / 60)
+    scraper.register_scraper(chemrxiv_scraper, attach_session=True, rate_limit=30 / 60)
     scraper.register_scraper(
-        openaccess_scraper, attach_session=True, priority=11, rate_limit=45 / 60
+        pmc_scraper, priority=9, rate_limit=30 / 60, attach_session=True
+    )
+    scraper.register_scraper(
+        pubmed_scraper, priority=9, rate_limit=30 / 60, attach_session=True
+    )
+    scraper.register_scraper(
+        openaccess_scraper, attach_session=True, priority=9, rate_limit=30 / 60
     )
     scraper.register_scraper(local_scraper, attach_session=False, priority=12)
     return scraper

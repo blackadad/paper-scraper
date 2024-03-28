@@ -21,7 +21,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
     see https://stackoverflow.com/a/60357775/107049
     """
 
-    MIN_SLEEP = 0.1
+    MIN_SLEEP = 0.001
 
     def __init__(
         self, rate_limit: Optional[float] = None, *args, **kwargs  # noqa: FA100

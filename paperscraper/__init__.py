@@ -10,6 +10,7 @@ from .lib import (
     pmc_to_pdf,
     pubmed_to_pdf,
     search_papers,
+    xiv_to_pdf,
 )
 from .scraper import Scraper
 from .utils import check_pdf

@@ -7,27 +7,110 @@ from pybtex.database import parse_string
 import paperscraper
 from paperscraper.exceptions import DOINotFoundError
 from paperscraper.headers import get_header
-from paperscraper.lib import clean_upbibtex, openaccess_scraper
-from paperscraper.utils import ThrottledClientSession
+from paperscraper.lib import clean_upbibtex, openaccess_scraper, reconcile_doi, doi_to_bibtex, format_bibtex
+from paperscraper.utils import ThrottledClientSession, find_doi
+
+class TestCrossref(IsolatedAsyncioTestCase):
+    async def test_reconcile_dois(self):
+        session = ThrottledClientSession(headers=get_header(), rate_limit=15 / 60)
+        link = "https://doi.org/10.1056/nejmoa2200674"
+        doi = "10.1056/nejmoa2200674"
+        assert find_doi(link) == doi
+
+        bibtex = await doi_to_bibtex(doi, session)
+        assert bibtex
+
+        # get title
+        title = bibtex.split("title={")[1].split("},")[0]
+        assert await reconcile_doi(title, [], session) == doi
+
+        # format
+        key = bibtex.split("{")[1].split(",")[0]
+        assert format_bibtex(bibtex, key, clean=False)
+
+def test_find_doi():
+    link = "https://www.sciencedirect.com/science/article/pii/S001046551930373X"
+    assert find_doi(link) is None
+
+    link = "https://doi.org/10.1056/nejmoa2200674"
+    assert find_doi(link) == "10.1056/nejmoa2200674"
+
+    link = "https://www.biorxiv.org/content/10.1101/2024.01.31.578268v1"
+    assert find_doi(link) == "10.1101/2024.01.31.578268v1"
+
+    link = "https://www.biorxiv.org/content/10.1101/2024.01.31.578268v1.full-text"
+    assert find_doi(link) == "10.1101/2024.01.31.578268v1"
+
+    link = "https://www.taylorfrancis.com/chapters/edit/10.1201/9781003240037-2/impact-covid-vaccination-globe-using-data-analytics-pawan-whig-arun-velu-rahul-reddy-pavika-sharma"
+    assert find_doi(link) == "10.1201/9781003240037-2"
+
+def test_format_bibtex_badkey():
+    bibtex1 = """
+            @article{Moreira2022Safety,
+            title        = {Safety and Efficacy of a Third Dose of BNT162b2 Covid-19 Vaccine},
+            volume       = {386},
+            ISSN         = {1533-4406},
+            url          = {http://dx.doi.org/10.1056/nejmoa2200674},
+            DOI          = {10.1056/nejmoa2200674},
+            number       = {20},
+            journal      = {New England Journal of Medicine},
+            publisher    = {Massachusetts Medical Society},
+            author       = {Moreira, Edson D. and Kitchin, Nicholas and Xu, Xia and Dychter, Samuel S. and Lockhart, Stephen and Gurtman, Alejandra and Perez, John L. and Zerbini, Cristiano and Dever, Michael E. and Jennings, Timothy W. and Brandon, Donald M. and Cannon, Kevin D. and Koren, Michael J. and Denham, Douglas S. and Berhe, Mezgebe and Fitz-Patrick, David and Hammitt, Laura L. and Klein, Nicola P. and Nell, Haylene and Keep, Georgina and Wang, Xingbin and Koury, Kenneth and Swanson, Kena A. and Cooper, David and Lu, Claire and Türeci, Özlem and Lagkadinou, Eleni and Tresnan, Dina B. and Dormitzer, Philip R. and Şahin, Uğur and Gruber, William C. and Jansen, Kathrin U.},
+            year         = {2022},
+            month        = may,
+            pages        = {1910–1921}
+            }
+            """
+    assert format_bibtex(bibtex1, "Moreira2022Safety", clean=False)
 
 
 class Test0(IsolatedAsyncioTestCase):
     async def test_google_search_papers(self):
         query = "molecular dynamics"
         papers = await paperscraper.a_search_papers(
-            query, search_type="google", year="2019-2023"
+            query, search_type="google", year="2019-2023", limit=5
         )
-        assert len(papers) >= 1
+        assert len(papers) >= 3
 
         query = "molecular dynamics"
         papers = await paperscraper.a_search_papers(
-            query, search_type="google", year="2020"
+            query, search_type="google", year="2020", limit=5
         )
-        assert len(papers) >= 1
+        assert len(papers) >= 3
 
         query = "covid vaccination"
         papers = await paperscraper.a_search_papers(query, search_type="google")
-        assert len(papers) >= 1
+        assert len(papers) >= 3
+
+class Test0(IsolatedAsyncioTestCase):
+    async def test_gsearch(self):
+        query = "molecular dynamics"
+        papers = await paperscraper.a_gsearch_papers(
+            query, year="2019-2023", limit=3
+        )
+        print(papers)
+        assert len(papers) >= 3
+
+        query = "molecular dynamics"
+        papers = await paperscraper.a_gsearch_papers(
+            query, year="2020", limit=3
+        )
+        assert len(papers) >= 3
+
+        query = "covid vaccination"
+        papers = await paperscraper.a_gsearch_papers(query, limit=3)
+        assert len(papers) >= 3
+
+        # check their details
+        for _, paper in papers.items():
+            print(paper)
+            assert paper["citation"]
+            assert paper["key"]
+            assert paper["url"]
+            assert paper["year"]
+            assert paper["paperId"]
+            assert paper["citationCount"]
+            assert paper["title"]
 
 
 class Test1(IsolatedAsyncioTestCase):

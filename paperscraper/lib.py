@@ -61,7 +61,7 @@ def clean_upbibtex(bibtex):
     return bibtex
 
 
-def format_bibtex(bibtex, key, clean=True):
+def format_bibtex(bibtex, key, clean: bool = True) -> str:
     # WOWOW This is hard to use
     from pybtex.database import parse_string
     from pybtex.style.formatting import unsrtalpha

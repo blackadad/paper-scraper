@@ -36,20 +36,28 @@ class TestCrossref(IsolatedAsyncioTestCase):
         assert format_bibtex(bibtex, key, clean=False)
 
 
-@pytest.mark.parameterize(("link", "expected"),
-    [
+def test_find_doi():
+    test_parameters = [
         ("https://www.sciencedirect.com/science/article/pii/S001046551930373X", None),
         ("https://doi.org/10.1056/nejmoa2200674", "10.1056/nejmoa2200674"),
-        ("https://www.biorxiv.org/content/10.1101/2024.01.31.578268v1", "10.1101/2024.01.31.578268v1"),
-        ("https://www.biorxiv.org/content/10.1101/2024.01.31.578268v1.full-text", "10.1101/2024.01.31.578268v1"),
-        ("https://www.taylorfrancis.com/chapters/edit/10.1201/9781003240037-2/impact-covid-vaccination-globe-using-data-analytics-pawan-whig-arun-velu-rahul-reddy-pavika-sharma", "10.1201/9781003240037-2"),
+        (
+            "https://www.biorxiv.org/content/10.1101/2024.01.31.578268v1",
+            "10.1101/2024.01.31.578268v1",
+        ),
+        (
+            "https://www.biorxiv.org/content/10.1101/2024.01.31.578268v1.full-text",
+            "10.1101/2024.01.31.578268v1",
+        ),
+        (
+            "https://www.taylorfrancis.com/chapters/edit/10.1201/9781003240037-2/impact-covid-vaccination-globe-using-data-analytics-pawan-whig-arun-velu-rahul-reddy-pavika-sharma",
+            "10.1201/9781003240037-2",
+        ),
     ]
-)
-def test_find_doi(link: str, expected: str | None) -> None:
-    if expected is None:
-        assert find_doi(link) is None
-    else:
-        assert find_doi(link) == expected
+    for link, expected in test_parameters:
+        if expected is None:
+            assert find_doi(link) is None
+        else:
+            assert find_doi(link) == expected
 
 
 def test_format_bibtex_badkey():

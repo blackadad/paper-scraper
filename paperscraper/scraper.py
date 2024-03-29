@@ -5,7 +5,7 @@ import logging
 import os
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Coroutine, Literal
 
 from .headers import get_header
 from .utils import ThrottledClientSession, check_pdf
@@ -104,7 +104,9 @@ class Scraper:
         self,
         papers: Sequence[dict[str, Any]],
         paper_file_dump_dir: str | os.PathLike,
-        paper_parser: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        paper_parser: (
+            Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, Any]]] | None
+        ) = None,
         batch_size: int = 10,
         limit: int | None = None,
         logger: logging.Logger | None = None,
@@ -125,14 +127,20 @@ class Scraper:
         Returns:
             Dictionary mapping path to downloaded paper to parsed metadata.
         """
-        parser = paper_parser or (lambda x: x)
+        if paper_parser is None:
+
+            async def parser(paper: dict[str, Any]) -> dict[str, Any]:
+                return paper
+
+        else:
+            parser = paper_parser
 
         async def scrape_parse(
             paper: dict[str, Any], i: int
         ) -> tuple[str, dict[str, Any]] | Literal[False]:
             path = os.path.join(paper_file_dump_dir, f'{paper["paperId"]}.pdf')
             success = await self.scrape(paper, path, i=i, logger=logger)
-            return (path, parser(paper)) if success else False
+            return (path, await parser(paper)) if success else False
 
         aggregated = {}
         for i in range(0, len(papers), batch_size):

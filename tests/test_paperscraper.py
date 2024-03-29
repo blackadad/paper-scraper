@@ -7,8 +7,15 @@ from pybtex.database import parse_string
 import paperscraper
 from paperscraper.exceptions import DOINotFoundError
 from paperscraper.headers import get_header
-from paperscraper.lib import clean_upbibtex, openaccess_scraper, reconcile_doi, doi_to_bibtex, format_bibtex
+from paperscraper.lib import (
+    clean_upbibtex,
+    doi_to_bibtex,
+    format_bibtex,
+    openaccess_scraper,
+    reconcile_doi,
+)
 from paperscraper.utils import ThrottledClientSession, find_doi
+
 
 class TestCrossref(IsolatedAsyncioTestCase):
     async def test_reconcile_dois(self):
@@ -28,6 +35,7 @@ class TestCrossref(IsolatedAsyncioTestCase):
         key = bibtex.split("{")[1].split(",")[0]
         assert format_bibtex(bibtex, key, clean=False)
 
+
 def test_find_doi():
     link = "https://www.sciencedirect.com/science/article/pii/S001046551930373X"
     assert find_doi(link) is None
@@ -44,6 +52,7 @@ def test_find_doi():
     link = "https://www.taylorfrancis.com/chapters/edit/10.1201/9781003240037-2/impact-covid-vaccination-globe-using-data-analytics-pawan-whig-arun-velu-rahul-reddy-pavika-sharma"
     assert find_doi(link) == "10.1201/9781003240037-2"
 
+
 def test_format_bibtex_badkey():
     bibtex1 = """
             @article{Moreira2022Safety,
@@ -58,9 +67,9 @@ def test_format_bibtex_badkey():
             author       = {Moreira, Edson D. and Kitchin, Nicholas and Xu, Xia and Dychter, Samuel S. and Lockhart, Stephen and Gurtman, Alejandra and Perez, John L. and Zerbini, Cristiano and Dever, Michael E. and Jennings, Timothy W. and Brandon, Donald M. and Cannon, Kevin D. and Koren, Michael J. and Denham, Douglas S. and Berhe, Mezgebe and Fitz-Patrick, David and Hammitt, Laura L. and Klein, Nicola P. and Nell, Haylene and Keep, Georgina and Wang, Xingbin and Koury, Kenneth and Swanson, Kena A. and Cooper, David and Lu, Claire and Türeci, Özlem and Lagkadinou, Eleni and Tresnan, Dina B. and Dormitzer, Philip R. and Şahin, Uğur and Gruber, William C. and Jansen, Kathrin U.},
             year         = {2022},
             month        = may,
-            pages        = {1910–1921}
+            pages        = {1910-1921}
             }
-            """
+            """  # noqa: E501
     assert format_bibtex(bibtex1, "Moreira2022Safety", clean=False)
 
 
@@ -82,19 +91,16 @@ class Test0(IsolatedAsyncioTestCase):
         papers = await paperscraper.a_search_papers(query, search_type="google")
         assert len(papers) >= 3
 
-class Test0(IsolatedAsyncioTestCase):
+
+class TestGS(IsolatedAsyncioTestCase):
     async def test_gsearch(self):
         query = "molecular dynamics"
-        papers = await paperscraper.a_gsearch_papers(
-            query, year="2019-2023", limit=3
-        )
+        papers = await paperscraper.a_gsearch_papers(query, year="2019-2023", limit=3)
         print(papers)
         assert len(papers) >= 3
 
         query = "molecular dynamics"
-        papers = await paperscraper.a_gsearch_papers(
-            query, year="2020", limit=3
-        )
+        papers = await paperscraper.a_gsearch_papers(query, year="2020", limit=3)
         assert len(papers) >= 3
 
         query = "covid vaccination"
@@ -102,7 +108,7 @@ class Test0(IsolatedAsyncioTestCase):
         assert len(papers) >= 3
 
         # check their details
-        for _, paper in papers.items():
+        for paper in papers.values():
             print(paper)
             assert paper["citation"]
             assert paper["key"]

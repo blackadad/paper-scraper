@@ -149,6 +149,7 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
             pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
             if pdf_link:
                 pdf_link = pdf_link.group(1)
+                break
 
             # if we got here, we didn't find a pdf
             raise RuntimeError(f"No PDF link found for {url}")

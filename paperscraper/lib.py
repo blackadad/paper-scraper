@@ -133,23 +133,21 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
                 html_text,
             )
             if pdf_link:
-                pdf_link = pdf_link.group(1)
-                return pdf_link
+                return pdf_link.group(1)
             # maybe epdf
             # should have pdf somewhere (could not be at end)
             epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
             if epdf_link:
-                pdf_link = epdf_link.group(1).replace("epdf", "pdf")
-                return pdf_link
+                return epdf_link.group(1).replace("epdf", "pdf")
 
             # obvious thing
             pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
             if pdf_link:
-                pdf_link = pdf_link.group(1)
-                return pdf_link
+                return pdf_link.group(1)
 
             # if we got here, we didn't find a pdf
             raise RuntimeError(f"No PDF link found for {url}")
+
         pdf_link = get_pdf()
         # check if the link is relative
         if pdf_link.startswith("/"):
@@ -837,9 +835,7 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
                 # best we can do
                 paper["citationCount"] = 0
             else:
-                paper["citationCount"] = int(
-                    paper["inline_links"]["cited_by"]["total"]
-                )
+                paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
 
             # set paperId to be hex digest of link
             paper["paperId"] = hashlib.md5(  # noqa: S324

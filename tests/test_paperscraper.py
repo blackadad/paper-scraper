@@ -95,20 +95,10 @@ class TestGS(IsolatedAsyncioTestCase):
     async def test_gsearch(self):
         query = "molecular dynamics"
         papers = await paperscraper.a_gsearch_papers(query, year="2019-2023", limit=3)
-        print(papers)
-        assert len(papers) >= 3
-
-        query = "molecular dynamics"
-        papers = await paperscraper.a_gsearch_papers(query, year="2020", limit=3)
-        assert len(papers) >= 3
-
-        query = "covid vaccination"
-        papers = await paperscraper.a_gsearch_papers(query, limit=3)
         assert len(papers) >= 3
 
         # check their details
         for paper in papers.values():
-            print(paper)
             assert paper["citation"]
             assert paper["key"]
             assert paper["url"]

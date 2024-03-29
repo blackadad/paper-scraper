@@ -537,8 +537,10 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                                         if not resp.ok:
                                             logger.warning(
                                                 "Error correlating papers from google"
-                                                "to semantic scholar (no year)"
-                                                f"{response.status} {response.reason} {await response.text()}"  # noqa: E501
+                                                " to semantic scholar (no year):"
+                                                f" status {resp.status},"
+                                                f" reason {resp.reason},"
+                                                f" text {await resp.text()!r}."
                                             )
                                         response = await resp.json()  # noqa: PLW2901
                             if "data" in response:

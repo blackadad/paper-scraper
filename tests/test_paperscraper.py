@@ -13,21 +13,22 @@ from paperscraper.utils import ThrottledClientSession
 
 class Test0(IsolatedAsyncioTestCase):
     async def test_google_search_papers(self):
-        query = "molecular dynamics"
-        papers = await paperscraper.a_search_papers(
-            query, search_type="google", year="2019-2023"
-        )
-        assert len(papers) >= 1
+        for query, year in [
+            ("molecular dynamics", "2019-2023"),
+            ("molecular dynamics", "2020"),
+            ("covid vaccination", None),
+        ]:
+            with self.subTest():
+                papers = await paperscraper.a_search_papers(
+                    query, search_type="google", year=year
+                )
+                assert len(papers) >= 1
 
-        query = "molecular dynamics"
+    async def test_high_limit(self) -> None:
         papers = await paperscraper.a_search_papers(
-            query, search_type="google", year="2020"
+            "molecular dynamics", search_type="google", year="2019-2023", limit=45
         )
-        assert len(papers) >= 1
-
-        query = "covid vaccination"
-        papers = await paperscraper.a_search_papers(query, search_type="google")
-        assert len(papers) >= 1
+        assert len(papers) > 20
 
 
 class Test1(IsolatedAsyncioTestCase):

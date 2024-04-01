@@ -531,7 +531,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                                         f"{title} | {year} not found. Now trying without year"
                                     )
                                     del local_p["year"]
-                                    async with ss_session.get(
+                                    async with ss_sub_session.get(
                                         url=endpoint, params=local_p
                                     ) as resp:
                                         if not resp.ok:

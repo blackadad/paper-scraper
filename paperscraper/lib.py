@@ -581,7 +581,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                                         response = await resp.json()  # noqa: PLW2901
                             if "data" in response:
                                 if pdf_link is not None:
-                                    # google scholar url takes precedence
+                                    # Google Scholar url takes precedence
                                     response["data"][0]["openAccessPdf"] = {
                                         "url": pdf_link
                                     }

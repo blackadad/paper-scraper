@@ -432,6 +432,8 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             ch.setFormatter(CustomFormatter())
             logger.addHandler(ch)
     params = {"fields": SEMANTIC_SCHOLAR_API_FIELDS}
+    if _limit > 100:  # noqa: PLR2004
+        raise NotImplementedError("Didn't handle Semantic Scholar pagination ('next').")
     endpoint, params = SematicScholarSearchType[search_type.upper()].make_url_params(
         params, query, _offset, _limit
     )

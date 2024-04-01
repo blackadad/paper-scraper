@@ -617,21 +617,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     return paths
 
 
-def search_papers(
-    query,
-    limit=10,
-    pdir=os.curdir,
-    semantic_scholar_api_key=None,
-    _paths=None,
-    _limit=100,
-    _offset=0,
-    logger=None,
-    year=None,
-    verbose=False,
-    scraper=None,
-    batch_size=10,
-    search_type="default",
-):
+def search_papers(*a_search_args, **a_search_kwargs):
     # special case for jupyter notebooks
     if "get_ipython" in globals() or "google.colab" in sys.modules:
         import nest_asyncio
@@ -642,20 +628,4 @@ def search_papers(
     except RuntimeError as e:  # noqa: F841
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    return loop.run_until_complete(
-        a_search_papers(
-            query,
-            limit=limit,
-            pdir=pdir,
-            semantic_scholar_api_key=semantic_scholar_api_key,
-            _paths=_paths,
-            _limit=_limit,
-            _offset=_offset,
-            logger=logger,
-            year=year,
-            verbose=verbose,
-            scraper=scraper,
-            batch_size=batch_size,
-            search_type=search_type,
-        )
-    )
+    return loop.run_until_complete(a_search_papers(*a_search_args, **a_search_kwargs))

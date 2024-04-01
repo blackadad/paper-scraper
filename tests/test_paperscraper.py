@@ -151,14 +151,18 @@ class Test4(IsolatedAsyncioTestCase):
 
 
 class Test5(IsolatedAsyncioTestCase):
-    async def test_search_papers_year(self):
+
+    async def test_search_papers_year(self) -> None:
         query = "covid vaccination"
-        papers = await paperscraper.a_search_papers(query, limit=1, year="2019-2023")
-        assert len(papers) >= 1
-        papers = await paperscraper.a_search_papers(query, limit=1, year=". 2021-2023")
-        assert len(papers) >= 1
-        papers = await paperscraper.a_search_papers(query, limit=1, year="2023-2022")
-        assert len(papers) >= 1
+
+        for year, name in [
+            ("2019-2023", "normal range"),
+            ("2023-2022", "flipped order"),
+            (". 2021-2023", "discard upon bad formatting"),
+        ]:
+            with self.subTest(msg=name):
+                papers = await paperscraper.a_search_papers(query, limit=1, year=year)
+                assert len(papers) >= 1
 
 
 class Test6(IsolatedAsyncioTestCase):

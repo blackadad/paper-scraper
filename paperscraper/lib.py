@@ -321,13 +321,12 @@ async def parse_google_scholar_metadata(
     paper: dict[str, Any], session: ClientSession
 ) -> dict[str, Any]:
     """Parse raw paper metadata from Google Scholar into a more rich format."""
-    doi = paper["externalIds"].get("DOI", None)
-    key = None
+    doi: str | None = paper["externalIds"].get("DOI", None)
     if doi:
         bibtex = await doi_to_bibtex(doi, session)
-        key = bibtex.split("{")[1].split(",")[0]
+        key: str = bibtex.split("{")[1].split(",")[0]
         citation = format_bibtex(bibtex, key, clean=False)
-    if key is None:
+    else:
         # get citation by following link
         # SLOW SLOW Using SerpAPI for this
         async with session.get(
@@ -341,6 +340,7 @@ async def parse_google_scholar_metadata(
         async with session.get(bibtex_link) as r:
             r.raise_for_status()
             bibtex = await r.text()
+        key = bibtex.split("{")[1].split(",")[0]
     return {
         "citation": citation,
         "key": key,

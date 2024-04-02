@@ -9,6 +9,7 @@ import re
 import sys
 from collections.abc import Awaitable, Callable
 from enum import IntEnum, auto
+from pathlib import Path
 from typing import Any
 
 from aiohttp import ClientSession, InvalidURL
@@ -482,8 +483,8 @@ class SematicScholarSearchType(IntEnum):
 
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     query: str,
-    limit=10,
-    pdir=os.curdir,
+    limit: int = 10,
+    pdir: str | os.PathLike = os.curdir,
     semantic_scholar_api_key: str | None = None,
     _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
     _limit: int = 100,
@@ -495,8 +496,37 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     batch_size: int = 10,
     search_type: str = "default",
 ) -> dict[str, dict[str, Any]]:
-    if not os.path.exists(pdir):
-        os.mkdir(pdir)
+    """
+    Asynchronously search for papers using Semantic Scholar, and scrape them.
+
+    Args:
+        query: Search input, its exact meaning depends on the search_type.
+        limit: Target result count, we will try to give at least this many results.
+            However, for cases when Semantic Scholar doesn't give enough results,
+            there will be less than this value.
+        pdir: Optional directory (created if it does not exist), that defaults to the
+            current directory, passed to Scraper.batch_scrape's paper_file_dump_dir.
+        semantic_scholar_api_key: Optional Semantic Scholar API key, otherwise
+            attempt to pull it from the environment variable SEMANTIC_SCHOLAR_API_KEY.
+        _paths: Previous Scraper.batch_scrape, used internally for recursion.
+        _limit: Result limit to pass to the Semantic Scholar API, only relevant for
+            some search_type.
+        _offset: Offset in the search results, used internally for recursion.
+        logger: Optional logger to use for logging. If left as default of None,
+            a 'paper-scraper' logger at ERROR level will be used.
+        year: Optional year string, either a single year (e.g. '2019')
+            or a year range (e.g. '2019-2023').
+        verbose: Set True to colorized log to stderr at DEBUG level.
+        scraper: Optional scraper to use after searching. If left as default of None,
+            the default scraper will be created.
+        batch_size: Passed through to Scraper.batch_scrape's batch_size.
+        search_type: Lowercase string corresponding with a SematicScholarSearchType key.
+
+    Returns:
+        Dict union of all Scraper.batch_scrape outputs.
+    """
+    pdir = Path(pdir)
+    pdir.mkdir(exist_ok=True)
     if logger is None:
         logger = logging.getLogger("paper-scraper")
         logger.setLevel(logging.ERROR)
@@ -506,10 +536,13 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             ch.setFormatter(CustomFormatter())
             logger.addHandler(ch)
     params = {"fields": SEMANTIC_SCHOLAR_API_FIELDS}
+    if _limit > 100:  # noqa: PLR2004
+        raise NotImplementedError("Didn't handle Semantic Scholar pagination ('next').")
     endpoint, params = SematicScholarSearchType[search_type.upper()].make_url_params(
         params, query, _offset, _limit
     )
     if search_type == "google":
+        # SEE: https://serpapi.com/google-scholar-api
         google_endpoint = "https://serpapi.com/search.json"
         google_params = {
             "q": query,
@@ -721,8 +754,8 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
 
 async def a_gsearch_papers(  # noqa: C901, PLR0915
     query: str,
-    limit=10,
-    pdir=os.curdir,
+    limit: int = 10,
+    pdir: str | os.PathLike = os.curdir,
     _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
     _offset: int = 0,
     _limit: int = 20,
@@ -732,8 +765,8 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
     scraper: Scraper | None = None,
     batch_size: int = 10,
 ) -> dict[str, dict[str, Any]]:
-    if not os.path.exists(pdir):
-        os.mkdir(pdir)
+    pdir = Path(pdir)
+    pdir.mkdir(exist_ok=True)
     if logger is None:
         logger = logging.getLogger("paper-scraper")
         logger.setLevel(logging.ERROR)
@@ -742,6 +775,7 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
             ch = logging.StreamHandler()
             ch.setFormatter(CustomFormatter())
             logger.addHandler(ch)
+    # SEE: https://serpapi.com/google-scholar-api
     endpoint = "https://serpapi.com/search.json"
     params = {
         "q": query,

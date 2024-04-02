@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import os
 import re
@@ -16,7 +17,7 @@ from .exceptions import DOINotFoundError
 from .headers import get_header
 from .log_formatter import CustomFormatter
 from .scraper import Scraper
-from .utils import ThrottledClientSession
+from .utils import ThrottledClientSession, find_doi, get_hostname
 
 
 def clean_upbibtex(bibtex):
@@ -60,14 +61,14 @@ def clean_upbibtex(bibtex):
     return bibtex
 
 
-def format_bibtex(bibtex, key):
+def format_bibtex(bibtex, key, clean: bool = True) -> str:
     # WOWOW This is hard to use
     from pybtex.database import parse_string
     from pybtex.style.formatting import unsrtalpha
 
     style = unsrtalpha.Style()
     try:
-        bd = parse_string(clean_upbibtex(bibtex), "bibtex")
+        bd = parse_string(clean_upbibtex(bibtex) if clean else bibtex, "bibtex")
     except Exception as e:  # noqa: F841
         return "Ref " + key
     try:
@@ -110,7 +111,7 @@ async def xiv_to_pdf(doi, path, domain: str, session: ClientSession) -> None:
             return
 
 
-async def link_to_pdf(url, path, session: ClientSession) -> None:
+async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
     # download
     async with session.get(url, allow_redirects=True) as r:
         if not r.ok:
@@ -121,27 +122,36 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:
             return
         # try to find a pdf link
         html_text = await r.text()
-        # try for chemrxiv special tag
-        pdf_link = re.search(
-            r'content="(https://chemrxiv.org/engage/api-gateway/chemrxiv/assets.*\.pdf)"',
-            html_text,
-        )
-        if pdf_link is None:
+
+        # I know this looks weird
+        # I just need to try stuff and be able
+        # to break out of flow if I find a pdf
+        def get_pdf():
+            # try for chemrxiv special tag
+            pdf_link = re.search(
+                r'content="(https://chemrxiv.org/engage/api-gateway/chemrxiv/assets.*\.pdf)"',
+                html_text,
+            )
+            if pdf_link:
+                return pdf_link.group(1)
+            # maybe epdf
             # should have pdf somewhere (could not be at end)
             epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
-            if epdf_link is None:
-                pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
-                if pdf_link is not None:
-                    pdf_link = pdf_link.group(1)
-            else:
-                # strip the epdf
-                pdf_link = epdf_link.group(1).replace("epdf", "pdf")
-                # try to find epdf link
-        else:
-            pdf_link = pdf_link.group(1)
-        if pdf_link is None:
+            if epdf_link:
+                return epdf_link.group(1).replace("epdf", "pdf")
+
+            # obvious thing
+            pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
+            if pdf_link:
+                return pdf_link.group(1)
+
+            # if we got here, we didn't find a pdf
             raise RuntimeError(f"No PDF link found for {url}")
 
+        pdf_link = get_pdf()
+        # check if the link is relative
+        if pdf_link.startswith("/"):
+            pdf_link = f"{get_hostname(url)}{pdf_link}"
     try:
         async with session.get(pdf_link, allow_redirects=True) as r:
             if not r.ok:
@@ -288,7 +298,7 @@ def default_scraper(
     return scraper
 
 
-def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, Any]:
+async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, Any]:
     """Parse raw paper metadata from Semantic Scholar into a more rich format."""
     bibtex = paper["citationStyles"]["bibtex"]
     key = bibtex.split("{")[1].split(",")[0]
@@ -304,6 +314,100 @@ def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, Any]:
         "citationCount": paper["citationCount"],
         "title": paper["title"],
     }
+
+
+async def parse_google_scholar_metadata(
+    paper: dict[str, Any], session: ClientSession
+) -> dict[str, Any]:
+    """Parse raw paper metadata from google scholar into a more rich format."""
+    doi = paper["externalIds"].get("DOI", None)
+    key = None
+    if doi:
+        bibtex = await doi_to_bibtex(doi, session)
+        key = bibtex.split("{")[1].split(",")[0]
+        citation = format_bibtex(bibtex, key, clean=False)
+    if key is None:
+        # get citation by following link
+        # SLOW SLOW Using SerpAPI for this
+        async with session.get(
+            paper["inline_links"]["serpapi_cite_link"]
+            + f"&api_key={os.environ['SERPAPI_API_KEY']}"
+        ) as r:
+            r.raise_for_status()
+            data = await r.json()
+            citation = next(
+                c["snippet"] for c in data["citations"] if c["title"] == "MLA"
+            )
+            bibtex_link = next(
+                c["link"] for c in data["links"] if c["name"] == "BibTeX"
+            )
+        async with session.get(bibtex_link) as r:
+            bibtex = await r.text()
+    return {
+        "citation": citation,
+        "key": key,
+        "bibtex": bibtex,
+        "year": paper["year"],
+        "url": paper["link"],
+        "paperId": paper["paperId"],
+        "doi": paper["externalIds"].get("DOI", None),
+        "citationCount": paper["citationCount"],
+        "title": paper["title"],
+    }
+
+
+async def reconcile_doi(title: str, authors: list[str], session: ClientSession) -> str:
+    # do not want initials
+    authors_query = " ".join([a for a in authors if len(a) > 1])
+    mailto = os.environ.get("CROSSREF_MAILTO", "paperscraper@example.org")
+    # get DOI via crossref
+    url = "https://api.crossref.org/works"
+    params = {
+        "query.title": title,
+        "mailto": mailto,
+        "select": "DOI,score",
+        "rows": "1",
+    }
+    if authors_query:
+        params["query.author"] = authors_query
+    async with session.get(url, params=params) as r:
+        if not r.ok:
+            raise DOINotFoundError("Could not reconcile DOI " + title)
+        data = await r.json()
+        if data["status"] == "failed":
+            raise DOINotFoundError(f"Could not find DOI for {title}")
+        if (
+            data["message"]["total-results"] == 0
+            or data["message"]["items"][0]["score"] < 0.5  # noqa: PLR2004
+        ):
+            raise DOINotFoundError(f"Could not find DOI for {title}")
+        return data["message"]["items"][0]["DOI"]
+
+
+async def doi_to_bibtex(doi: str, session: ClientSession) -> str:
+    # get DOI via crossref
+    url = f"https://api.crossref.org/works/{doi}/transform/application/x-bibtex"
+    async with session.get(url) as r:
+        r.raise_for_status()
+        data = await r.text()
+    # must make new key
+    key = data.split("{")[1].split(",")[0]
+    new_key = key.replace("_", "")
+    try:
+        author_frag = (
+            data.split("author={")[1]
+            .split("}")[0]
+            .split()[0]
+            .strip()
+            .replace(" and ", "")
+            .replace(",", "")
+        )
+        title_frag = data.split("title={")[1].split("}")[0].split()[0].strip()
+        year_frag = data.split("year={")[1].split("}")[0].split()[0].strip()
+    except IndexError:
+        return data.replace(key, new_key)
+    new_key = f"{author_frag}{year_frag}{title_frag}"
+    return data.replace(key, new_key)
 
 
 SEMANTIC_SCHOLAR_API_FIELDS: str = ",".join(
@@ -614,6 +718,164 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
         )
     if _offset == 0:
         await scraper.close()
+    return paths
+
+
+async def a_gsearch_papers(  # noqa: C901, PLR0915
+    query: str,
+    limit=10,
+    pdir=os.curdir,
+    _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
+    _offset: int = 0,
+    _limit: int = 20,
+    logger: logging.Logger | None = None,
+    year: str | None = None,
+    verbose: bool = False,
+    scraper: Scraper | None = None,
+    batch_size: int = 10,
+) -> dict[str, dict[str, Any]]:
+    if not os.path.exists(pdir):
+        os.mkdir(pdir)
+    if logger is None:
+        logger = logging.getLogger("paper-scraper")
+        logger.setLevel(logging.ERROR)
+        if verbose:
+            logger.setLevel(logging.DEBUG)
+            ch = logging.StreamHandler()
+            ch.setFormatter(CustomFormatter())
+            logger.addHandler(ch)
+    endpoint = "https://serpapi.com/search.json"
+    params = {
+        "q": query,
+        "api_key": os.environ["SERPAPI_API_KEY"],
+        "engine": "google_scholar",
+        "num": _limit,
+        "start": _offset,
+        # TODO - add offset and limit here  # noqa: TD004
+    }
+
+    if year is not None:
+        # need to really make sure year is correct
+        year = year.strip()
+        if "-" in year:
+            # make sure start/end are valid
+            try:
+                start, end = year.split("-")
+                if int(start) <= int(end):
+                    params["as_ylo"] = start
+                    params["as_yhi"] = end
+            except ValueError:
+                pass
+        else:
+            with contextlib.suppress(ValueError):
+                params["as_ylo"] = year
+                params["as_yhi"] = year
+        if "as_ylo" not in params:
+            logger.warning(f"Could not parse year {year}")
+
+    paths = _paths or {}
+    scraper = scraper or default_scraper()
+    ssheader = get_header()
+    # add key to headers
+
+    # Shared rate limits here between gs/crossref
+    async with ThrottledClientSession(
+        headers=ssheader,
+        rate_limit=30,
+    ) as session:
+        async with session.get(
+            url=endpoint,
+            params=params,
+        ) as response:
+            if not response.ok:
+                raise RuntimeError(
+                    f"Error searching papers: {response.status} {response.reason} {await response.text()}"  # noqa: E501
+                )
+            data = await response.json()
+
+        if "organic_results" not in data:
+            return paths
+        papers = data["organic_results"]
+        year_extract = re.compile(r"\b\d{4}\b")
+
+        async def process(paper):
+            # get years
+            match = year_extract.findall(paper["publication_info"]["summary"])
+            year = match[0] if len(match) > 0 else None
+            paper["year"] = year
+
+            # set pdf link
+            if "resources" in paper:
+                for res in paper["resources"]:
+                    if "file_format" in res and res["file_format"] == "PDF":
+                        paper["openAccessPdf"] = {"url": res["link"]}
+
+            # set external ids
+            paper["externalIds"] = {}
+            if paper["link"].startswith("https://arxiv.org/abs/"):
+                paper["externalIds"]["ArXiv"] = paper["link"].split(
+                    "https://arxiv.org/abs/"
+                )[1]
+
+            doi = find_doi(paper["link"])
+            if doi is not None:
+                paper["externalIds"]["DOI"] = doi
+            else:
+                # try to get DOI from crossref
+                author_query = []
+                if "authors" in paper["publication_info"]:
+                    author_query = [
+                        a["name"] for a in paper["publication_info"]["authors"]
+                    ]
+                doi = await reconcile_doi(paper["title"], author_query, session)
+                paper["externalIds"]["DOI"] = doi
+
+            # set citation count
+            if "cited_by" not in paper["inline_links"]:
+                # best we can do
+                paper["citationCount"] = 0
+            else:
+                paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
+
+            # set paperId to be hex digest of link
+            paper["paperId"] = hashlib.md5(  # noqa: S324
+                paper["link"].encode()
+            ).hexdigest()[0:16]
+            return paper
+
+        papers = await asyncio.gather(*[process(p) for p in papers])
+        total_papers = data["search_information"]["total_results"]
+        logger.info(
+            f"Found {total_papers} papers, analyzing {_offset} to {_offset + len(papers)}"
+        )
+
+        async def parser(*args):
+            return await parse_google_scholar_metadata(*args, session=session)
+
+        # batch them, since we may reach desired limit before all done
+        paths.update(
+            await scraper.batch_scrape(
+                papers,
+                pdir,
+                parser,
+                batch_size,
+                limit,
+                logger,
+            )
+        )
+    if len(paths) < limit and _offset + _limit < total_papers:
+        paths.update(
+            await a_gsearch_papers(
+                query, limit=limit, pdir=pdir, _paths=paths, _offset=_offset + limit
+            ),
+            _limit=_limit,
+            logger=logger,
+            year=year,
+            verbose=verbose,
+            scraper=scraper,
+            batch_size=batch_size,
+        )
+    await scraper.close()
     return paths
 
 

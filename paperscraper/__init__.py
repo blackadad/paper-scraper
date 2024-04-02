@@ -2,6 +2,7 @@
 
 from .exceptions import DOINotFoundError
 from .lib import (
+    a_gsearch_papers,
     a_search_papers,
     arxiv_to_pdf,
     default_scraper,

@@ -2,7 +2,9 @@ import asyncio
 import contextlib
 import os
 import random
+import re
 import time
+import urllib.parse
 from logging import Logger
 from typing import Optional, Union
 
@@ -100,7 +102,9 @@ class ThrottledClientSession(aiohttp.ClientSession):
             response = await super()._request(*args, **kwargs)
             if response and (response.status in (429, 503, 504)):
                 # some service limit reached
-                await asyncio.sleep((2**retries) * 0.1 + random.random() * 0.1)
+                await asyncio.sleep(
+                    max(3 * self.rate_limit, (2**retries) * 0.1 + random.random() * 0.1)
+                )
                 continue
             break
         return response
@@ -118,3 +122,27 @@ def check_pdf(path, verbose: Union[bool, Logger] = False) -> bool:  # noqa: FA10
             verbose.exception(f"PDF at {path} is corrupt.", exc_info=e)
         return False
     return True
+
+
+pattern = r"10.\d{4,9}/[-._;():A-Z0-9]+"
+compiled_pattern = re.compile(pattern, re.IGNORECASE)
+
+
+def find_doi(text):
+    # https://www.crossref.org/blog/dois-and-matching-regular-expressions/
+    match = compiled_pattern.search(text)
+    if match:
+        proposed = match.group()
+    else:
+        return None
+
+    # strip off any trailing marksers
+    proposed = proposed.replace(".abstract", "")
+    proposed = proposed.replace(".full-text", "")
+    proposed = proposed.replace(".full", "")
+    return proposed.replace(".pdf", "")
+
+
+def get_hostname(url):
+    parsed_url = urllib.parse.urlparse(url)
+    return parsed_url.netloc

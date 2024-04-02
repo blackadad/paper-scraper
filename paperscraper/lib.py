@@ -565,7 +565,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
         # check if it's in the environment
         with contextlib.suppress(KeyError):
             ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
-    async with ThrottledClientSession(  # noqa: SIM117
+    async with ThrottledClientSession(
         rate_limit=(
             90 if "x-api-key" in ssheader or search_type == "google" else 15 / 60
         ),
@@ -583,116 +583,116 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 )
             data = await response.json()
 
-            if search_type == "google":
-                if "organic_results" not in data:
-                    return paths
-                papers = data["organic_results"]
-                year_extract = re.compile(r"\b\d{4}\b")
-                titles = [p["title"] for p in papers]
-                years: list[str | None] = [None] * len(papers)
-                for i, p in enumerate(papers):
-                    match = year_extract.findall(p["publication_info"]["summary"])
-                    if len(match) > 0:
-                        years[i] = match[0]
+        if search_type == "google":
+            if "organic_results" not in data:
+                return paths
+            papers = data["organic_results"]
+            year_extract = re.compile(r"\b\d{4}\b")
+            titles = [p["title"] for p in papers]
+            years: list[str | None] = [None] * len(papers)
+            for i, p in enumerate(papers):
+                match = year_extract.findall(p["publication_info"]["summary"])
+                if len(match) > 0:
+                    years[i] = match[0]
 
-                # get PDF resources
-                google_pdf_links: list[str | None] = [None] * len(papers)
-                for i, p in enumerate(papers):
-                    if "resources" in p:
-                        for res in p["resources"]:
-                            if res.get("file_format") == "PDF":
-                                google_pdf_links[i] = res["link"]
+            # get PDF resources
+            google_pdf_links: list[str | None] = [None] * len(papers)
+            for i, p in enumerate(papers):
+                if "resources" in p:
+                    for res in p["resources"]:
+                        if res.get("file_format") == "PDF":
+                            google_pdf_links[i] = res["link"]
 
-                # want this separate, since ss is rate_limit for Google
-                async with ThrottledClientSession(
-                    rate_limit=90 if "x-api-key" in ssheader else 15 / 60,
-                    headers=ssheader,
-                ) as ss_sub_session:
-                    # Now we need to reconcile with S2 API these results
-                    async def google2s2(
-                        title: str, year: str | None, pdf_link
-                    ) -> dict[str, Any] | None:
-                        local_p = params.copy()
-                        local_p["query"] = title.replace("-", " ")
-                        if year is not None:
-                            local_p["year"] = year
+            # want this separate, since ss is rate_limit for Google
+            async with ThrottledClientSession(
+                rate_limit=90 if "x-api-key" in ssheader else 15 / 60,
+                headers=ssheader,
+            ) as ss_sub_session:
+                # Now we need to reconcile with S2 API these results
+                async def google2s2(
+                    title: str, year: str | None, pdf_link
+                ) -> dict[str, Any] | None:
+                    local_p = params.copy()
+                    local_p["query"] = title.replace("-", " ")
+                    if year is not None:
+                        local_p["year"] = year
+                    async with ss_sub_session.get(
+                        url=endpoint, params=local_p
+                    ) as response:
+                        if not response.ok:
+                            logger.warning(
+                                "Error correlating papers from google to semantic scholar:"
+                                f" status {response.status}, reason {response.reason!r},"
+                                f" text {await response.text()!r}."
+                            )
+                            return None
+                        response = await response.json()  # noqa: PLW2901
+                    if (
+                        "data" not in response
+                        and year is not None
+                        and response["total"] == 0
+                    ):
+                        logger.info(
+                            f"{title} | {year} not found. Now trying without year"
+                        )
+                        del local_p["year"]
                         async with ss_sub_session.get(
                             url=endpoint, params=local_p
-                        ) as response:
-                            if not response.ok:
+                        ) as resp:
+                            if not resp.ok:
                                 logger.warning(
-                                    "Error correlating papers from google to semantic scholar:"
-                                    f" status {response.status}, reason {response.reason!r},"
-                                    f" text {await response.text()!r}."
+                                    "Error correlating papers from google"
+                                    " to semantic scholar (no year):"
+                                    f" status {resp.status}, reason {resp.reason},"
+                                    f" text {await resp.text()!r}."
                                 )
-                                return None
-                            response = await response.json()  # noqa: PLW2901
-                        if (
-                            "data" not in response
-                            and year is not None
-                            and response["total"] == 0
-                        ):
-                            logger.info(
-                                f"{title} | {year} not found. Now trying without year"
-                            )
-                            del local_p["year"]
-                            async with ss_sub_session.get(
-                                url=endpoint, params=local_p
-                            ) as resp:
-                                if not resp.ok:
-                                    logger.warning(
-                                        "Error correlating papers from google"
-                                        " to semantic scholar (no year):"
-                                        f" status {resp.status}, reason {resp.reason},"
-                                        f" text {await resp.text()!r}."
-                                    )
-                                response = await resp.json()
-                        if "data" in response:
-                            if pdf_link is not None:
-                                # google scholar url takes precedence
-                                response["data"][0]["openAccessPdf"] = {"url": pdf_link}
-                            return response["data"][0]
-                        return None
+                            response = await resp.json()
+                    if "data" in response:
+                        if pdf_link is not None:
+                            # google scholar url takes precedence
+                            response["data"][0]["openAccessPdf"] = {"url": pdf_link}
+                        return response["data"][0]
+                    return None
 
-                    responses = await asyncio.gather(
-                        *(
-                            google2s2(t, y, p)
-                            for t, y, p in zip(titles, years, google_pdf_links)
-                        )
+                responses = await asyncio.gather(
+                    *(
+                        google2s2(t, y, p)
+                        for t, y, p in zip(titles, years, google_pdf_links)
                     )
-                data = {"data": [r for r in responses if r is not None]}
-                data["total"] = len(data["data"])
-            field = "data"
-            if search_type == "paper_recommendations":
-                field = "recommendedPapers"
-            elif search_type == "doi":
-                data = {"data": [data]}
-            if field not in data:
-                return paths
-            papers = data[field]
-            if search_type == "future_citations":
-                papers = [p["citingPaper"] for p in papers]
-            if search_type == "past_references":
-                papers = [p["citedPaper"] for p in papers]
-            # resort based on influentialCitationCount - is this good?
-            if search_type == "default":
-                papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
-            if search_type in ["default", "google"]:
-                logger.info(
-                    f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"  # noqa: E501
                 )
-
-            # batch them, since we may reach desired limit before all done
-            paths.update(
-                await scraper.batch_scrape(
-                    papers,
-                    pdir,
-                    parse_semantic_scholar_metadata,
-                    batch_size,
-                    limit,
-                    logger,
-                )
+            data = {"data": [r for r in responses if r is not None]}
+            data["total"] = len(data["data"])
+        field = "data"
+        if search_type == "paper_recommendations":
+            field = "recommendedPapers"
+        elif search_type == "doi":
+            data = {"data": [data]}
+        if field not in data:
+            return paths
+        papers = data[field]
+        if search_type == "future_citations":
+            papers = [p["citingPaper"] for p in papers]
+        if search_type == "past_references":
+            papers = [p["citedPaper"] for p in papers]
+        # resort based on influentialCitationCount - is this good?
+        if search_type == "default":
+            papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
+        if search_type in ["default", "google"]:
+            logger.info(
+                f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
             )
+
+        # batch them, since we may reach desired limit before all done
+        paths.update(
+            await scraper.batch_scrape(
+                papers,
+                pdir,
+                parse_semantic_scholar_metadata,
+                batch_size,
+                limit,
+                logger,
+            )
+        )
     if (
         search_type in ["default", "google"]
         and len(paths) < limit
@@ -864,14 +864,18 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
     if len(paths) < limit and _offset + _limit < total_papers:
         paths.update(
             await a_gsearch_papers(
-                query, limit=limit, pdir=pdir, _paths=paths, _offset=_offset + limit
-            ),
-            _limit=_limit,
-            logger=logger,
-            year=year,
-            verbose=verbose,
-            scraper=scraper,
-            batch_size=batch_size,
+                query,
+                limit=limit,
+                pdir=pdir,
+                _paths=paths,
+                _offset=_offset + limit,
+                _limit=_limit,
+                logger=logger,
+                year=year,
+                verbose=verbose,
+                scraper=scraper,
+                batch_size=batch_size,
+            )
         )
     await scraper.close()
     return paths

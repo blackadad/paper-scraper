@@ -336,13 +336,10 @@ async def parse_google_scholar_metadata(
         ) as r:
             r.raise_for_status()
             data = await r.json()
-            citation = next(
-                c["snippet"] for c in data["citations"] if c["title"] == "MLA"
-            )
-            bibtex_link = next(
-                c["link"] for c in data["links"] if c["name"] == "BibTeX"
-            )
+        citation = next(c["snippet"] for c in data["citations"] if c["title"] == "MLA")
+        bibtex_link = next(c["link"] for c in data["links"] if c["name"] == "BibTeX")
         async with session.get(bibtex_link) as r:
+            r.raise_for_status()
             bibtex = await r.text()
     return {
         "citation": citation,

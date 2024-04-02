@@ -864,14 +864,18 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
     if len(paths) < limit and _offset + _limit < total_papers:
         paths.update(
             await a_gsearch_papers(
-                query, limit=limit, pdir=pdir, _paths=paths, _offset=_offset + limit
-            ),
-            _limit=_limit,
-            logger=logger,
-            year=year,
-            verbose=verbose,
-            scraper=scraper,
-            batch_size=batch_size,
+                query,
+                limit=limit,
+                pdir=pdir,
+                _paths=paths,
+                _offset=_offset + limit,
+                _limit=_limit,
+                logger=logger,
+                year=year,
+                verbose=verbose,
+                scraper=scraper,
+                batch_size=batch_size,
+            )
         )
     await scraper.close()
     return paths

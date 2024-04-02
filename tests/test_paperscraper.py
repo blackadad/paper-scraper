@@ -81,22 +81,23 @@ def test_format_bibtex_badkey():
 
 
 class Test0(IsolatedAsyncioTestCase):
-    async def test_google_search_papers(self):
-        query = "molecular dynamics"
-        papers = await paperscraper.a_search_papers(
-            query, search_type="google", year="2019-2023", limit=5
-        )
-        assert len(papers) >= 3
+    async def test_google_search_papers(self) -> None:
+        for query, year, limit in [
+            ("molecular dynamics", "2019-2023", 5),
+            ("molecular dynamics", "2020", 5),
+            ("covid vaccination", None, 10),
+        ]:
+            with self.subTest():
+                papers = await paperscraper.a_search_papers(
+                    query, search_type="google", year=year, limit=limit
+                )
+                assert len(papers) >= 3
 
-        query = "molecular dynamics"
+    async def test_high_limit(self) -> None:
         papers = await paperscraper.a_search_papers(
-            query, search_type="google", year="2020", limit=5
+            "molecular dynamics", search_type="google", year="2019-2023", limit=45
         )
-        assert len(papers) >= 3
-
-        query = "covid vaccination"
-        papers = await paperscraper.a_search_papers(query, search_type="google")
-        assert len(papers) >= 3
+        assert len(papers) > 20
 
 
 class TestGS(IsolatedAsyncioTestCase):
@@ -114,6 +115,12 @@ class TestGS(IsolatedAsyncioTestCase):
             assert paper["paperId"]
             assert paper["citationCount"]
             assert paper["title"]
+
+    async def test_high_limit(self) -> None:
+        papers = await paperscraper.a_gsearch_papers(
+            "molecular dynamics", year="2019-2023", limit=45
+        )
+        assert len(papers) > 20
 
 
 class Test1(IsolatedAsyncioTestCase):

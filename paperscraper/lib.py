@@ -9,6 +9,7 @@ import re
 import sys
 from collections.abc import Awaitable, Callable
 from enum import IntEnum, auto
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -876,15 +877,12 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
             f"Found {total_papers} papers, analyzing {_offset} to {_offset + len(papers)}"
         )
 
-        async def parser(*args):
-            return await parse_google_scholar_metadata(*args, session=session)
-
         # batch them, since we may reach desired limit before all done
         paths.update(
             await scraper.batch_scrape(
                 papers,
                 pdir,
-                parser,
+                partial(parse_google_scholar_metadata, session=session),
                 batch_size,
                 limit,
                 logger,

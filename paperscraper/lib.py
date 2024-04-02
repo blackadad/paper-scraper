@@ -627,34 +627,32 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                                 )
                                 return None
                             response = await response.json()  # noqa: PLW2901
-                            if (  # noqa: SIM102
-                                "data" not in response and year is not None
-                            ):
-                                if response["total"] == 0:
-                                    logger.info(
-                                        f"{title} | {year} not found. Now trying without year"
+                        if (
+                            "data" not in response
+                            and year is not None
+                            and response["total"] == 0
+                        ):
+                            logger.info(
+                                f"{title} | {year} not found. Now trying without year"
+                            )
+                            del local_p["year"]
+                            async with ss_sub_session.get(
+                                url=endpoint, params=local_p
+                            ) as resp:
+                                if not resp.ok:
+                                    logger.warning(
+                                        "Error correlating papers from google"
+                                        " to semantic scholar (no year):"
+                                        f" status {resp.status}, reason {resp.reason},"
+                                        f" text {await resp.text()!r}."
                                     )
-                                    del local_p["year"]
-                                    async with ss_session.get(
-                                        url=endpoint, params=local_p
-                                    ) as resp:
-                                        if not resp.ok:
-                                            logger.warning(
-                                                "Error correlating papers from google"
-                                                " to semantic scholar (no year):"
-                                                f" status {resp.status},"
-                                                f" reason {resp.reason},"
-                                                f" text {await resp.text()!r}."
-                                            )
-                                        response = await resp.json()  # noqa: PLW2901
-                            if "data" in response:
-                                if pdf_link is not None:
-                                    # google scholar url takes precedence
-                                    response["data"][0]["openAccessPdf"] = {
-                                        "url": pdf_link
-                                    }
-                                return response["data"][0]
-                            return None
+                                response = await resp.json()
+                        if "data" in response:
+                            if pdf_link is not None:
+                                # google scholar url takes precedence
+                                response["data"][0]["openAccessPdf"] = {"url": pdf_link}
+                            return response["data"][0]
+                        return None
 
                     responses = await asyncio.gather(
                         *(

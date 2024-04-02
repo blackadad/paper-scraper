@@ -93,6 +93,12 @@ class Test0(IsolatedAsyncioTestCase):
                 )
                 assert len(papers) >= 3
 
+    async def test_high_limit(self) -> None:
+        papers = await paperscraper.a_search_papers(
+            "molecular dynamics", search_type="google", year="2019-2023", limit=45
+        )
+        assert len(papers) > 20
+
 
 class TestGS(IsolatedAsyncioTestCase):
     async def test_gsearch(self):
@@ -109,6 +115,12 @@ class TestGS(IsolatedAsyncioTestCase):
             assert paper["paperId"]
             assert paper["citationCount"]
             assert paper["title"]
+
+    async def test_high_limit(self) -> None:
+        papers = await paperscraper.a_gsearch_papers(
+            "molecular dynamics", year="2019-2023", limit=45
+        )
+        assert len(papers) > 20
 
 
 class Test1(IsolatedAsyncioTestCase):

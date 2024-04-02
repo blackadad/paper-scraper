@@ -615,10 +615,12 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     f"Error searching papers: {response.status} {response.reason} {await response.text()}"  # noqa: E501
                 )
             data = await response.json()
-
-        if search_type == "google":
+        if search_type == "default":
+            has_more_data = _offset + _limit < data["total"]
+        elif search_type == "google":
             if "organic_results" not in data:
                 return paths
+            has_more_data = "pagination" in data
             papers = data["organic_results"]
             year_extract = re.compile(r"\b\d{4}\b")
             titles = [p["title"] for p in papers]
@@ -726,11 +728,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 logger,
             )
         )
-    if (
-        search_type in ["default", "google"]
-        and len(paths) < limit
-        and _offset + _limit < data["total"]
-    ):
+    if search_type in ["default", "google"] and len(paths) < limit and has_more_data:
         paths.update(
             await a_search_papers(
                 query,

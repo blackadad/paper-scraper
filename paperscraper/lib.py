@@ -319,7 +319,7 @@ async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, An
 async def parse_google_scholar_metadata(
     paper: dict[str, Any], session: ClientSession
 ) -> dict[str, Any]:
-    """Parse raw paper metadata from google scholar into a more rich format."""
+    """Parse raw paper metadata from Google Scholar into a more rich format."""
     doi = paper["externalIds"].get("DOI", None)
     key = None
     if doi:
@@ -649,7 +649,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                             response = await resp.json()
                     if "data" in response:
                         if pdf_link is not None:
-                            # google scholar url takes precedence
+                            # Google Scholar url takes precedence
                             response["data"][0]["openAccessPdf"] = {"url": pdf_link}
                         return response["data"][0]
                     return None

@@ -872,7 +872,7 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
             return paper
 
         papers = await asyncio.gather(*[process(p) for p in papers])
-        total_papers = data["search_information"]["total_results"]
+        total_papers = data["search_information"].get("total_results", 1)
         logger.info(
             f"Found {total_papers} papers, analyzing {_offset} to {_offset + len(papers)}"
         )

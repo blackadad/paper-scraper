@@ -9,7 +9,7 @@ from logging import Logger
 from typing import Optional, Union
 
 import aiohttp
-import pypdf
+import fitz
 
 
 class ThrottledClientSession(aiohttp.ClientSession):
@@ -19,8 +19,6 @@ class ThrottledClientSession(aiohttp.ClientSession):
     USAGE:
         replace `session = aiohttp.ClientSession()`
         with `session = ThrottledClientSession(rate_limit=15)`
-
-    see https://stackoverflow.com/a/60357775/107049
     """
 
     MIN_SLEEP = 0.001
@@ -37,7 +35,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
         if rate_limit is not None:
             if rate_limit <= 0:
                 raise ValueError("rate_limit must be positive")
-            self._queue = asyncio.Queue(min(2, int(rate_limit) + 1))
+            self._queue = asyncio.Queue(max(2, int(rate_limit)))
             self._fillerTask = asyncio.create_task(self._filler(rate_limit))
 
     def _get_sleep(self) -> Optional[float]:  # noqa: FA100
@@ -61,26 +59,17 @@ class ThrottledClientSession(aiohttp.ClientSession):
             self.rate_limit = rate_limit
             sleep = self._get_sleep()
             updated_at = time.monotonic()
-            fraction = 0
-            extra_increment = 0
-            for i in range(self._queue.maxsize):
-                self._queue.put_nowait(i)
             while True:
-                if not self._queue.full():
-                    now = time.monotonic()
-                    increment = rate_limit * (now - updated_at)
-                    fraction += increment % 1
-                    extra_increment = fraction // 1
-                    items_2_add = int(
-                        min(
-                            self._queue.maxsize - self._queue.qsize(),
-                            int(increment) + extra_increment,
-                        )
-                    )
-                    fraction = fraction % 1
-                    for i in range(items_2_add):
-                        self._queue.put_nowait(i)
-                    updated_at = now
+                now = time.monotonic()
+                # Calculate how many tokens to add to the bucket based on elapsed time.
+                tokens_to_add = int((now - updated_at) * rate_limit)
+                for _ in range(tokens_to_add):
+                    try:
+                        # Use 'put_nowait' inside a try-except to handle full queue.
+                        self._queue.put_nowait(None)
+                    except asyncio.QueueFull:
+                        break  # The bucket is full, no more tokens can be added.
+                updated_at = now
                 await asyncio.sleep(sleep)
         except asyncio.CancelledError:
             pass
@@ -89,9 +78,6 @@ class ThrottledClientSession(aiohttp.ClientSession):
 
     async def _allow(self) -> None:
         if self._queue is not None:
-            # debug
-            # if self._start_time == None:
-            #    self._start_time = time.time()
             await self._queue.get()
             self._queue.task_done()
 
@@ -110,18 +96,26 @@ class ThrottledClientSession(aiohttp.ClientSession):
         return response
 
 
-def check_pdf(path, verbose: Union[bool, Logger] = False) -> bool:  # noqa: FA100
+def check_pdf(path: str, verbose: Union[bool, Logger] = False) -> bool:
     if not os.path.exists(path):
         return False
+
     try:
-        pdf = pypdf.PdfReader(path)  # noqa: F841
-    except (pypdf.errors.PyPdfError, ValueError) as e:
+        # Open the PDF file using fitz
+        with fitz.open(path) as doc:
+            # You can add more checks here if needed, e.g., to iterate through pages
+            pass  # For now, just opening the file is our basic check
+
+    except Exception as e:  # Catching a general exception as fitz might throw various types of exceptions
+        # Handle the verbose logging or printing
         if verbose and isinstance(verbose, bool):
-            print(f"PDF at {path} is corrupt: {e}")
+            print(f"PDF at {path} is corrupt or unreadable: {e}")
         elif verbose:
-            verbose.exception(f"PDF at {path} is corrupt.", exc_info=e)
+            verbose.exception(f"PDF at {path} is corrupt or unreadable.", exc_info=e)
         return False
+
     return True
+
 
 
 pattern = r"10.\d{4,9}/[-._;():A-Z0-9]+"

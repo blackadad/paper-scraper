@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "aiohttp",
     "pybtex",
-    "pypdf",
+    "PyMuPDF",
 ]
 description = "LLM Chain for answering questions from docs"
 keywords = ["question answering"]

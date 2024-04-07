@@ -324,10 +324,13 @@ async def parse_google_scholar_metadata(
     """Parse raw paper metadata from Google Scholar into a more rich format."""
     doi: str | None = paper["externalIds"].get("DOI", None)
     if doi:
-        bibtex = await doi_to_bibtex(doi, session)
-        key: str = bibtex.split("{")[1].split(",")[0]
-        citation = format_bibtex(bibtex, key, clean=False)
-    else:
+        try:
+            bibtex = await doi_to_bibtex(doi, session)
+            key: str = bibtex.split("{")[1].split(",")[0]
+            citation = format_bibtex(bibtex, key, clean=False)
+        except DOINotFoundError:
+            doi = None
+    if not doi:
         # get citation by following link
         # SLOW SLOW Using SerpAPI for this
         async with session.get(
@@ -387,7 +390,8 @@ async def doi_to_bibtex(doi: str, session: ClientSession) -> str:
     # get DOI via crossref
     url = f"https://api.crossref.org/works/{doi}/transform/application/x-bibtex"
     async with session.get(url) as r:
-        r.raise_for_status()
+        if not r.ok:
+            raise DOINotFoundError(f"Could not resolve DOI {doi}")
         data = await r.text()
     # must make new key
     key = data.split("{")[1].split(",")[0]

@@ -19,9 +19,9 @@ classifiers = [
     "Programming Language :: Python",
 ]
 dependencies = [
-    "aiohttp",
-    "pybtex",
     "PyMuPDF",
+    "aiohttp",
+    "pybtex"
 ]
 description = "LLM Chain for answering questions from docs"
 keywords = ["question answering"]

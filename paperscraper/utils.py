@@ -19,6 +19,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
     USAGE:
         replace `session = aiohttp.ClientSession()`
         with `session = ThrottledClientSession(rate_limit=15)`
+
     """
 
     MIN_SLEEP = 0.001
@@ -63,12 +64,17 @@ class ThrottledClientSession(aiohttp.ClientSession):
                 now = time.monotonic()
                 # Calculate how many tokens to add to the bucket based on elapsed time.
                 tokens_to_add = int((now - updated_at) * rate_limit)
+                # Calculate available space in the queue to avoid overfilling it.
+                available_space = self._queue.maxsize - self._queue.qsize()
+                tokens_to_add = min(
+                    tokens_to_add, available_space
+                )  # Only add as many tokens as there is space.
+
                 for _ in range(tokens_to_add):
-                    try:
-                        # Use 'put_nowait' inside a try-except to handle full queue.
-                        self._queue.put_nowait(None)
-                    except asyncio.QueueFull:
-                        break  # The bucket is full, no more tokens can be added.
+                    self._queue.put_nowait(
+                        None
+                    )  # No need for try-except here due to pre-check.
+
                 updated_at = now
                 await asyncio.sleep(sleep)
         except asyncio.CancelledError:
@@ -96,17 +102,18 @@ class ThrottledClientSession(aiohttp.ClientSession):
         return response
 
 
-def check_pdf(path: str, verbose: Union[bool, Logger] = False) -> bool:
+def check_pdf(path: str, verbose: Union[bool, Logger] = False) -> bool:  # noqa: FA100
     if not os.path.exists(path):
         return False
 
     try:
         # Open the PDF file using fitz
-        with fitz.open(path) as doc:
-            # You can add more checks here if needed, e.g., to iterate through pages
+        with fitz.open(path) as _:
             pass  # For now, just opening the file is our basic check
 
-    except Exception as e:  # Catching a general exception as fitz might throw various types of exceptions
+    except (
+        Exception
+    ) as e:  # Catching a general exception as fitz might throw various types of exceptions
         # Handle the verbose logging or printing
         if verbose and isinstance(verbose, bool):
             print(f"PDF at {path} is corrupt or unreadable: {e}")
@@ -115,7 +122,6 @@ def check_pdf(path: str, verbose: Union[bool, Logger] = False) -> bool:
         return False
 
     return True
-
 
 
 pattern = r"10.\d{4,9}/[-._;():A-Z0-9]+"

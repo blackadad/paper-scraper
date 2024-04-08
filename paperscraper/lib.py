@@ -211,6 +211,7 @@ async def pmc_to_pdf(pmc_id, path, session: ClientSession) -> None:
 
 async def arxiv_scraper(paper, path, session: ClientSession) -> bool:
     # check doi
+    # example: doi.org/10.48550/arXiv.2305.10379
     if "DOI" in paper["externalIds"] and paper["externalIds"]["DOI"].split("/")[
         -1
     ].startswith("arXiv"):

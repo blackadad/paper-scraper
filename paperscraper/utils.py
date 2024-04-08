@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import os
@@ -5,8 +7,9 @@ import random
 import re
 import time
 import urllib.parse
+from collections.abc import Collection
 from logging import Logger
-from typing import Optional, Union
+from typing import cast
 
 import aiohttp
 import fitz
@@ -24,22 +27,32 @@ class ThrottledClientSession(aiohttp.ClientSession):
 
     MIN_SLEEP = 0.001
 
-    def __init__(
-        self, rate_limit: Optional[float] = None, *args, **kwargs  # noqa: FA100
-    ) -> None:
-        # rate_limit - per second
+    def __init__(self, rate_limit: float | None = None, *args, **kwargs) -> None:
+        """
+        Initialize.
+
+        Args:
+            rate_limit: Optional number of requests per second to throttle.
+            *args: Positional arguments to pass to aiohttp.ClientSession.__init__.
+            **kwargs: Keyword arguments to pass to aiohttp.ClientSession.__init__.
+        """
         super().__init__(*args, **kwargs)
         self.rate_limit = rate_limit
-        self._fillerTask = None
-        self._queue = None
         self._start_time = time.time()
         if rate_limit is not None:
             if rate_limit <= 0:
                 raise ValueError("rate_limit must be positive")
-            self._queue = asyncio.Queue(max(2, int(rate_limit)))
-            self._fillerTask = asyncio.create_task(self._filler(rate_limit))
+            self._queue: asyncio.Queue | None = asyncio.Queue(
+                maxsize=max(2, int(rate_limit))
+            )
+            self._fillerTask: asyncio.Task | None = asyncio.create_task(
+                self._filler(rate_limit)
+            )
+        else:
+            self._queue = None
+            self._fillerTask = None
 
-    def _get_sleep(self) -> Optional[float]:  # noqa: FA100
+    def _get_sleep(self) -> float | None:
         if self.rate_limit is not None:
             return max(1 / self.rate_limit, self.MIN_SLEEP)
         return None
@@ -48,32 +61,32 @@ class ThrottledClientSession(aiohttp.ClientSession):
         """Close rate-limiter's "bucket filler" task."""
         if self._fillerTask is not None:
             self._fillerTask.cancel()
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(self._fillerTask, timeout=0.5)
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self._fillerTask, timeout=0.5)
         await super().close()
 
-    async def _filler(self, rate_limit: float = 1):
+    async def _filler(self, rate_limit: float = 1) -> None:
         """Filler task to fill the leaky bucket algo."""
+        if self._queue is None:
+            return
         try:
-            if self._queue is None:
-                return
             self.rate_limit = rate_limit
-            sleep = self._get_sleep()
+            sleep = cast(float, self._get_sleep())
             updated_at = time.perf_counter()
             while True:
                 now = time.perf_counter()
                 # Calculate how many tokens to add to the bucket based on elapsed time.
-                tokens_to_add = int((now - updated_at) * rate_limit)
+                requests_to_add = int((now - updated_at) * rate_limit)
                 # Calculate available space in the queue to avoid overfilling it.
                 available_space = self._queue.maxsize - self._queue.qsize()
-                tokens_to_add = min(
-                    tokens_to_add, available_space
-                )  # Only add as many tokens as there is space.
+                requests_to_add = min(
+                    requests_to_add, available_space
+                )  # Only add as many requests as there is space.
 
-                for _ in range(tokens_to_add):
+                for _ in range(requests_to_add):
                     self._queue.put_nowait(
                         None
-                    )  # Insert a token (just None) into the queue to represent a request.
+                    )  # Insert a request (represented as None) into the queue
 
                 updated_at = now
                 await asyncio.sleep(sleep)
@@ -87,22 +100,31 @@ class ThrottledClientSession(aiohttp.ClientSession):
             await self._queue.get()
             self._queue.task_done()
 
+    SERVICE_LIMIT_REACHED_STATUS_CODES: Collection[int] = {429, 503, 504}
+
     async def _request(self, *args, **kwargs) -> aiohttp.ClientResponse:
         """Throttled _request()."""
         for retries in range(5):
             await self._allow()
             response = await super()._request(*args, **kwargs)
-            if response and (response.status in (429, 503, 504)):
-                # some service limit reached
-                await asyncio.sleep(
-                    max(3 * self.rate_limit, (2**retries) * 0.1 + random.random() * 0.1)
+            if response.status in self.SERVICE_LIMIT_REACHED_STATUS_CODES:
+                if self.rate_limit is not None:
+                    await asyncio.sleep(
+                        max(
+                            3 * self.rate_limit,
+                            (2**retries) * 0.1 + random.random() * 0.1,
+                        )
+                    )
+                    continue
+                raise NotImplementedError(
+                    "Hit a service limit without a rate limit, please specify a rate limit."
                 )
-                continue
             break
         return response
 
 
-def check_pdf(path: str, verbose: Union[bool, Logger] = False) -> bool:  # noqa: FA100
+def check_pdf(path: str | os.PathLike, verbose: bool | Logger = False) -> bool:
+    path = str(path)
     if not os.path.exists(path):
         return False
 

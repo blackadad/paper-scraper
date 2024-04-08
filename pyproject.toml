@@ -93,6 +93,8 @@ warn_unused_ignores = true
 ignore_missing_imports = true
 # Per-module configuration options
 module = [
+    "fitz",  # SEE: https://github.com/pymupdf/PyMuPDF/issues/3361
+    "nest_asyncio",
     "pybtex.*",  # SEE: https://bitbucket.org/pybtex-devs/pybtex/issues/141/type-annotations
 ]
 

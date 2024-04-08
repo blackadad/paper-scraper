@@ -116,7 +116,7 @@ class TestGS(IsolatedAsyncioTestCase):
             assert paper["citationCount"]
             assert paper["title"]
 
-    async def test_high_limit(self) -> None:
+    async def test_gsearch_high_limit(self) -> None:
         papers = await paperscraper.a_gsearch_papers(
             "molecular dynamics", year="2019-2023", limit=45
         )

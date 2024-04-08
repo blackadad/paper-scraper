@@ -324,21 +324,30 @@ async def parse_google_scholar_metadata(
     """Parse raw paper metadata from Google Scholar into a more rich format."""
     doi: str | None = paper["externalIds"].get("DOI", None)
     if doi:
-        bibtex = await doi_to_bibtex(doi, session)
-        key: str = bibtex.split("{")[1].split(",")[0]
-        citation = format_bibtex(bibtex, key, clean=False)
-    else:
+        try:
+            bibtex = await doi_to_bibtex(doi, session)
+            key: str = bibtex.split("{")[1].split(",")[0]
+            citation = format_bibtex(bibtex, key, clean=False)
+        except DOINotFoundError:
+            doi = None
+    if not doi:
         # get citation by following link
         # SLOW SLOW Using SerpAPI for this
         async with session.get(
             paper["inline_links"]["serpapi_cite_link"]
             + f"&api_key={os.environ['SERPAPI_API_KEY']}"
         ) as r:
+            # we raise here, because something really is wrong.
             r.raise_for_status()
             data = await r.json()
         citation = next(c["snippet"] for c in data["citations"] if c["title"] == "MLA")
         bibtex_link = next(c["link"] for c in data["links"] if c["name"] == "BibTeX")
         async with session.get(bibtex_link) as r:
+            # we may have a 443 - link expired
+            if r.status == 443:  # noqa: PLR2004
+                raise RuntimeError(
+                    f"Google scholar blocking bibtex link at {bibtex_link}"
+                )
             r.raise_for_status()
             bibtex = await r.text()
         key = bibtex.split("{")[1].split(",")[0]
@@ -387,7 +396,10 @@ async def doi_to_bibtex(doi: str, session: ClientSession) -> str:
     # get DOI via crossref
     url = f"https://api.crossref.org/works/{doi}/transform/application/x-bibtex"
     async with session.get(url) as r:
-        r.raise_for_status()
+        if not r.ok:
+            raise DOINotFoundError(
+                f"Per HTTP status code {r.status_code}, could not resolve DOI {doi}."
+            )
         data = await r.text()
     # must make new key
     key = data.split("{")[1].split(",")[0]
@@ -779,7 +791,6 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
         "engine": "google_scholar",
         "num": _limit,
         "start": _offset,
-        # TODO - add offset and limit here  # noqa: TD004
     }
 
     if year is not None:
@@ -865,13 +876,12 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
             else:
                 paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
 
-            # set paperId to be hex digest of link
-            paper["paperId"] = hashlib.md5(  # noqa: S324
-                paper["link"].encode()
-            ).hexdigest()[0:16]
+            # set paperId to be hex digest of doi
+            paper["paperId"] = hashlib.md5(doi.encode()).hexdigest()[0:16]  # noqa: S324
             return paper
 
-        papers = await asyncio.gather(*[process(p) for p in papers])
+        # we only process papers that have a link
+        papers = await asyncio.gather(*[process(p) for p in papers if "link" in p])
         total_papers = data["search_information"].get("total_results", 1)
         logger.info(
             f"Found {total_papers} papers, analyzing {_offset} to {_offset + len(papers)}"

@@ -343,8 +343,8 @@ async def parse_google_scholar_metadata(
         # get citation by following link
         # SLOW SLOW Using SerpAPI for this
         async with session.get(
-            paper["inline_links"]["serpapi_cite_link"]
-            + f"&api_key={os.environ['SERPAPI_API_KEY']}"
+            paper["inline_links"]["serpapi_cite_link"],
+            params={"api_key": os.environ["SERPAPI_API_KEY"]},
         ) as r:
             # we raise here, because something really is wrong.
             r.raise_for_status()

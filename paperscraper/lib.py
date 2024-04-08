@@ -345,7 +345,7 @@ async def parse_google_scholar_metadata(
         async with session.get(bibtex_link) as r:
             # we may have a 443 - link expired
             if r.status == 443:
-                raise RuntimeError(f"Google scholar refused bibtex link at {bibtex_link}")
+                raise RuntimeError(f"443 on bibtex link at {bibtex_link}")
             r.raise_for_status()
             bibtex = await r.text()
         key = bibtex.split("{")[1].split(",")[0]
@@ -873,9 +873,7 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
                 paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
 
             # set paperId to be hex digest of doi
-            paper["paperId"] = hashlib.md5(  # noqa: S324
-                doi.encode()
-            ).hexdigest()[0:16]
+            paper["paperId"] = hashlib.md5(doi.encode()).hexdigest()[0:16]  # noqa: S324
             return paper
 
         # we only process papers that have a link

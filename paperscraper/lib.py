@@ -210,11 +210,19 @@ async def pmc_to_pdf(pmc_id, path, session: ClientSession) -> None:
 
 
 async def arxiv_scraper(paper, path, session: ClientSession) -> bool:
-    if "ArXiv" not in paper["externalIds"]:
-        return False
-    arxiv_id = paper["externalIds"]["ArXiv"]
-    await arxiv_to_pdf(arxiv_id, path, session)
-    return True
+    # check doi
+    if "DOI" in paper["externalIds"] and paper["externalIds"]["DOI"].split("/")[
+        -1
+    ].startswith("arXiv"):
+        arxiv_id = paper["externalIds"]["DOI"].split("/arxiv.")[-1]
+        await arxiv_to_pdf(arxiv_id, path, session)
+        return True
+    # check if it was somehow set
+    if "ArXiv" in paper["externalIds"]:
+        arxiv_id = paper["externalIds"]["ArXiv"]
+        await arxiv_to_pdf(arxiv_id, path, session)
+        return True
+    return False
 
 
 async def xiv_scraper(paper, path, domain: str, session: ClientSession) -> bool:

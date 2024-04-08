@@ -59,9 +59,9 @@ class ThrottledClientSession(aiohttp.ClientSession):
                 return
             self.rate_limit = rate_limit
             sleep = self._get_sleep()
-            updated_at = time.monotonic()
+            updated_at = time.perf_counter()
             while True:
-                now = time.monotonic()
+                now = time.perf_counter()
                 # Calculate how many tokens to add to the bucket based on elapsed time.
                 tokens_to_add = int((now - updated_at) * rate_limit)
                 # Calculate available space in the queue to avoid overfilling it.
@@ -73,7 +73,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
                 for _ in range(tokens_to_add):
                     self._queue.put_nowait(
                         None
-                    )  # No need for try-except here due to pre-check.
+                    )  # Insert a token (just None) into the queue to represent a request.
 
                 updated_at = now
                 await asyncio.sleep(sleep)
@@ -108,7 +108,7 @@ def check_pdf(path: str, verbose: Union[bool, Logger] = False) -> bool:  # noqa:
 
     try:
         # Open the PDF file using fitz
-        with fitz.open(path) as _:
+        with fitz.open(path):
             pass  # For now, just opening the file is our basic check
 
     except fitz.FileDataError as e:

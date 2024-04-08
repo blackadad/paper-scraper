@@ -345,7 +345,9 @@ async def parse_google_scholar_metadata(
         async with session.get(bibtex_link) as r:
             # we may have a 443 - link expired
             if r.status == 443:  # noqa: PLR2004
-                raise RuntimeError(f"443 on bibtex link at {bibtex_link}")
+                raise RuntimeError(
+                    f"Google scholar blocking bibtex link at {bibtex_link}"
+                )
             r.raise_for_status()
             bibtex = await r.text()
         key = bibtex.split("{")[1].split(",")[0]
@@ -395,7 +397,9 @@ async def doi_to_bibtex(doi: str, session: ClientSession) -> str:
     url = f"https://api.crossref.org/works/{doi}/transform/application/x-bibtex"
     async with session.get(url) as r:
         if not r.ok:
-            raise DOINotFoundError(f"Could not resolve DOI {doi}")
+            raise DOINotFoundError(
+                f"Per HTTP status code {r.status_code}, could not resolve DOI {doi}."
+            )
         data = await r.text()
     # must make new key
     key = data.split("{")[1].split(",")[0]

@@ -344,7 +344,7 @@ async def parse_google_scholar_metadata(
         bibtex_link = next(c["link"] for c in data["links"] if c["name"] == "BibTeX")
         async with session.get(bibtex_link) as r:
             # we may have a 443 - link expired
-            if r.status == 443:  # noqa: PLR2004 
+            if r.status == 443:  # noqa: PLR2004
                 raise RuntimeError(f"443 on bibtex link at {bibtex_link}")
             r.raise_for_status()
             bibtex = await r.text()

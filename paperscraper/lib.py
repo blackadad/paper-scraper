@@ -407,7 +407,7 @@ async def doi_to_bibtex(doi: str, session: ClientSession) -> str:
     async with session.get(url) as r:
         if not r.ok:
             raise DOINotFoundError(
-                f"Per HTTP status code {r.status_code}, could not resolve DOI {doi}."
+                f"Per HTTP status code {r.status}, could not resolve DOI {doi}."
             )
         data = await r.text()
     # must make new key

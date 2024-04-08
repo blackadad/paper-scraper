@@ -1,3 +1,4 @@
 pytest
+pytest-timeout
 pre-commit
 requests

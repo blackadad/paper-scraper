@@ -215,7 +215,7 @@ async def arxiv_scraper(paper, path, session: ClientSession) -> bool:
     if "DOI" in paper["externalIds"] and paper["externalIds"]["DOI"].split("/")[
         -1
     ].startswith("arXiv"):
-        arxiv_id = paper["externalIds"]["DOI"].split("/arxiv.")[-1]
+        arxiv_id = paper["externalIds"]["DOI"].split("/arXiv.")[-1]
         await arxiv_to_pdf(arxiv_id, path, session)
         return True
     # check if it was somehow set

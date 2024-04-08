@@ -111,9 +111,7 @@ def check_pdf(path: str, verbose: Union[bool, Logger] = False) -> bool:  # noqa:
         with fitz.open(path) as _:
             pass  # For now, just opening the file is our basic check
 
-    except (
-        fitz.FileDataError
-    ) as e: 
+    except fitz.FileDataError as e:
         if verbose and isinstance(verbose, bool):
             print(f"PDF at {path} is corrupt or unreadable: {e}")
         elif verbose:

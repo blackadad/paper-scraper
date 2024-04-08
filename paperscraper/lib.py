@@ -13,7 +13,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from aiohttp import ClientSession, InvalidURL
+from aiohttp import ClientResponseError, ClientSession, InvalidURL
 
 from .exceptions import DOINotFoundError
 from .headers import get_header
@@ -343,8 +343,8 @@ async def parse_google_scholar_metadata(
         # get citation by following link
         # SLOW SLOW Using SerpAPI for this
         async with session.get(
-            paper["inline_links"]["serpapi_cite_link"]
-            + f"&api_key={os.environ['SERPAPI_API_KEY']}"
+            paper["inline_links"]["serpapi_cite_link"],
+            params={"api_key": os.environ["SERPAPI_API_KEY"]},
         ) as r:
             # we raise here, because something really is wrong.
             r.raise_for_status()
@@ -352,12 +352,18 @@ async def parse_google_scholar_metadata(
         citation = next(c["snippet"] for c in data["citations"] if c["title"] == "MLA")
         bibtex_link = next(c["link"] for c in data["links"] if c["name"] == "BibTeX")
         async with session.get(bibtex_link) as r:
-            # we may have a 443 - link expired
-            if r.status == 443:  # noqa: PLR2004
-                raise RuntimeError(
-                    f"Google scholar blocking bibtex link at {bibtex_link}"
+            try:
+                r.raise_for_status()
+            except ClientResponseError as exc:
+                # we may have a 443 - link expired
+                msg = (
+                    "Google scholar blocked"
+                    if r.status == 443  # noqa: PLR2004
+                    else "Unexpected failure to follow"
                 )
-            r.raise_for_status()
+                raise RuntimeError(
+                    f"{msg} bibtex link {bibtex_link} for paper {paper}."
+                ) from exc
             bibtex = await r.text()
         key = bibtex.split("{")[1].split(",")[0]
     return {

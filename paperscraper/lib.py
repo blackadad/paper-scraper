@@ -337,11 +337,15 @@ async def parse_google_scholar_metadata(
             paper["inline_links"]["serpapi_cite_link"]
             + f"&api_key={os.environ['SERPAPI_API_KEY']}"
         ) as r:
+            # we raise here, because something really is wrong.
             r.raise_for_status()
             data = await r.json()
         citation = next(c["snippet"] for c in data["citations"] if c["title"] == "MLA")
         bibtex_link = next(c["link"] for c in data["links"] if c["name"] == "BibTeX")
         async with session.get(bibtex_link) as r:
+            # we may have a 443 - link expired
+            if r.status == 443:
+                raise RuntimeError(f"Google scholar refused bibtex link at {bibtex_link}")
             r.raise_for_status()
             bibtex = await r.text()
         key = bibtex.split("{")[1].split(",")[0]
@@ -783,7 +787,6 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
         "engine": "google_scholar",
         "num": _limit,
         "start": _offset,
-        # TODO - add offset and limit here  # noqa: TD004
     }
 
     if year is not None:
@@ -869,13 +872,14 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
             else:
                 paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
 
-            # set paperId to be hex digest of link
+            # set paperId to be hex digest of doi
             paper["paperId"] = hashlib.md5(  # noqa: S324
-                paper["link"].encode()
+                doi.encode()
             ).hexdigest()[0:16]
             return paper
 
-        papers = await asyncio.gather(*[process(p) for p in papers])
+        # we only process papers that have a link
+        papers = await asyncio.gather(*[process(p) for p in papers if "link" in p])
         total_papers = data["search_information"].get("total_results", 1)
         logger.info(
             f"Found {total_papers} papers, analyzing {_offset} to {_offset + len(papers)}"

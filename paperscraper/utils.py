@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import random
@@ -10,6 +11,7 @@ import urllib.parse
 from collections.abc import Collection
 from logging import Logger
 from typing import cast
+from uuid import UUID
 
 import aiohttp
 import fitz
@@ -162,6 +164,15 @@ def find_doi(text: str) -> str | None:
     if not match:
         return None
     return match.group()
+
+
+def encode_id(value: str | bytes | UUID, maxsize: int | None = 16) -> str:
+    """Encode a value (e.g. a DOI) optionally with a max length."""
+    if isinstance(value, UUID):
+        value = str(value)
+    if isinstance(value, str):
+        value = value.encode()
+    return hashlib.md5(value).hexdigest()[:maxsize]  # noqa: S324
 
 
 def get_hostname(url):

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hashlib
 import logging
 import os
 import re
@@ -19,7 +18,7 @@ from .exceptions import DOINotFoundError
 from .headers import get_header
 from .log_formatter import CustomFormatter
 from .scraper import Scraper
-from .utils import ThrottledClientSession, find_doi, get_hostname
+from .utils import ThrottledClientSession, encode_id, find_doi, get_hostname
 
 
 def clean_upbibtex(bibtex):
@@ -913,7 +912,7 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
                 paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
 
             # set paperId to be hex digest of doi
-            paper["paperId"] = hashlib.md5(doi.encode()).hexdigest()[0:16]  # noqa: S324
+            paper["paperId"] = encode_id(doi)
             return paper
 
         # we only process papers that have a link

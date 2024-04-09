@@ -101,6 +101,12 @@ module = [
 ]
 
 [tool.pytest.ini_options]
+# Sets a list of filters and actions that should be taken for matched warnings.
+# By default all warnings emitted during the test session will be displayed in
+# a summary at the end of the test session.
+filterwarnings = [
+    'ignore:open_text is deprecated. Use files\(\) instead:DeprecationWarning',  # Remove after release of https://github.com/mcmtroffaes/latexcodec/issues/98 or closing of https://bitbucket.org/pybtex-devs/pybtex/issues/160/latexcodec-pylatexenc
+]
 # Timeout in seconds for entire session.  Default is None which means no timeout.
 # Timeout is checked between tests, and will not interrupt a test in progress.
 session_timeout = 1200

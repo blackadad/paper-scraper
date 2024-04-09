@@ -34,7 +34,7 @@ class TestCrossref(IsolatedAsyncioTestCase):
         assert format_bibtex(bibtex, key, clean=False)
 
 
-def test_find_doi():
+def test_find_doi() -> None:
     test_parameters = [
         ("https://www.sciencedirect.com/science/article/pii/S001046551930373X", None),
         ("https://doi.org/10.1056/nejmoa2200674", "10.1056/nejmoa2200674"),
@@ -49,6 +49,18 @@ def test_find_doi():
         (
             "https://www.taylorfrancis.com/chapters/edit/10.1201/9781003240037-2/impact-covid-vaccination-globe-using-data-analytics-pawan-whig-arun-velu-rahul-reddy-pavika-sharma",
             "10.1201/9781003240037-2",
+        ),
+        (
+            "https://iopscience.iop.org/article/10.7567/1882-0786/ab5c44/meta",
+            "10.7567/1882-0786/ab5c44",
+        ),
+        (
+            "https://iopscience.iop.org/article/10.7567/abc123abc/meta",
+            "10.7567/abc123abc",
+        ),
+        (
+            "https://iopscience.iop.org/article/10.7567/abc123abc.pdf",
+            "10.7567/abc123abc",
         ),
     ]
     for link, expected in test_parameters:

@@ -72,24 +72,22 @@ class ThrottledClientSession(aiohttp.ClientSession):
         """Filler task to fill the leaky bucket algo."""
         if self._queue is None:
             return
+        self.rate_limit = rate_limit
+        sleep = cast(float, self._get_sleep())
+        updated_at = time.perf_counter()
         try:
-            self.rate_limit = rate_limit
-            sleep = cast(float, self._get_sleep())
-            updated_at = time.perf_counter()
             while True:
                 now = time.perf_counter()
                 # Calculate how many tokens to add to the bucket based on elapsed time.
                 requests_to_add = int((now - updated_at) * rate_limit)
                 # Calculate available space in the queue to avoid overfilling it.
                 available_space = self._queue.maxsize - self._queue.qsize()
-                requests_to_add = min(
-                    requests_to_add, available_space
-                )  # Only add as many requests as there is space.
+                # Only add as many requests as there is space.
+                requests_to_add = min(requests_to_add, available_space)
 
                 for _ in range(requests_to_add):
-                    self._queue.put_nowait(
-                        None
-                    )  # Insert a request (represented as None) into the queue
+                    # Insert a request (represented as None) into the queue
+                    self._queue.put_nowait(None)
 
                 updated_at = now
                 await asyncio.sleep(sleep)

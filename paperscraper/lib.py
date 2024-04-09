@@ -13,13 +13,21 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from aiohttp import ClientResponseError, ClientSession, InvalidURL
+from aiohttp import ClientResponseError, ClientSession, ClientTimeout, InvalidURL
 
 from .exceptions import DOINotFoundError
 from .headers import get_header
 from .log_formatter import CustomFormatter
 from .scraper import Scraper
 from .utils import ThrottledClientSession, find_doi, get_hostname
+
+try:
+    PAPERSCRAPER_REQUEST_TIMEOUT = ClientTimeout(
+        # NOTE: feel free to set as "None" to defeat the timeout
+        total=float(os.environ.get("PAPERSCRAPER_REQUEST_TIMEOUT", "30"))  # sec
+    )
+except ValueError:
+    PAPERSCRAPER_REQUEST_TIMEOUT = ClientTimeout(total=None)
 
 
 def clean_upbibtex(bibtex):
@@ -95,7 +103,9 @@ async def likely_pdf(response) -> bool:
 async def arxiv_to_pdf(arxiv_id, path, session: ClientSession) -> None:
     # download
     async with session.get(
-        f"https://arxiv.org/pdf/{arxiv_id}.pdf", allow_redirects=True
+        f"https://arxiv.org/pdf/{arxiv_id}.pdf",
+        allow_redirects=True,
+        timeout=PAPERSCRAPER_REQUEST_TIMEOUT,
     ) as r:
         if not r.ok or not await likely_pdf(r):
             raise RuntimeError(f"No paper with arxiv id {arxiv_id}")
@@ -105,7 +115,9 @@ async def arxiv_to_pdf(arxiv_id, path, session: ClientSession) -> None:
 
 async def xiv_to_pdf(doi, path, domain: str, session: ClientSession) -> None:
     async with session.get(
-        f"https://{domain}/content/{doi}.full.pdf", allow_redirects=True
+        f"https://{domain}/content/{doi}.full.pdf",
+        allow_redirects=True,
+        timeout=PAPERSCRAPER_REQUEST_TIMEOUT,
     ) as r:
         if r.ok and await likely_pdf(r):
             with open(path, "wb") as f:  # noqa: ASYNC101
@@ -115,7 +127,9 @@ async def xiv_to_pdf(doi, path, domain: str, session: ClientSession) -> None:
 
 async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
     # download
-    async with session.get(url, allow_redirects=True) as r:
+    async with session.get(
+        url, allow_redirects=True, timeout=PAPERSCRAPER_REQUEST_TIMEOUT
+    ) as r:
         if not r.ok:
             raise RuntimeError(f"Unable to download {url}, status code {r.status}")
         if "pdf" in r.headers["Content-Type"]:
@@ -155,7 +169,9 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
         if pdf_link.startswith("/"):
             pdf_link = f"{get_hostname(url)}{pdf_link}"
     try:
-        async with session.get(pdf_link, allow_redirects=True) as r:
+        async with session.get(
+            pdf_link, allow_redirects=True, timeout=PAPERSCRAPER_REQUEST_TIMEOUT
+        ) as r:
             if not r.ok:
                 raise RuntimeError(
                     f"Unable to download {pdf_link}, status code {r.status}"
@@ -171,7 +187,7 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
 
 async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:
     url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}"
-    async with session.get(url) as r:
+    async with session.get(url, timeout=PAPERSCRAPER_REQUEST_TIMEOUT) as r:
         if not r.ok:
             raise RuntimeError(f"No paper with pmc id {pmc_id}. {url} {r.status}")
         html_text = await r.text()
@@ -184,7 +200,10 @@ async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:
 
 
 async def pubmed_to_pdf(pubmed_id, path, session: ClientSession) -> None:
-    async with session.get(f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/") as r:
+    async with session.get(
+        f"https://pubmed.ncbi.nlm.nih.gov/{pubmed_id}/",
+        timeout=PAPERSCRAPER_REQUEST_TIMEOUT,
+    ) as r:
         if not r.ok:
             raise RuntimeError(
                 f"Error fetching PMC ID for PubMed ID {pubmed_id}. {r.status}"
@@ -200,7 +219,9 @@ async def pubmed_to_pdf(pubmed_id, path, session: ClientSession) -> None:
 
 async def pmc_to_pdf(pmc_id, path, session: ClientSession) -> None:
     pdf_url = await find_pmc_pdf_link(pmc_id, session)
-    async with session.get(pdf_url, allow_redirects=True) as r:
+    async with session.get(
+        pdf_url, allow_redirects=True, timeout=PAPERSCRAPER_REQUEST_TIMEOUT
+    ) as r:
         if not r.ok or not await likely_pdf(r):
             raise RuntimeError(
                 f"No paper with PubMed Central ID {pmc_id}. {pdf_url} {r.status}"
@@ -351,7 +372,7 @@ async def parse_google_scholar_metadata(
             data = await r.json()
         citation = next(c["snippet"] for c in data["citations"] if c["title"] == "MLA")
         bibtex_link = next(c["link"] for c in data["links"] if c["name"] == "BibTeX")
-        async with session.get(bibtex_link) as r:
+        async with session.get(bibtex_link, timeout=PAPERSCRAPER_REQUEST_TIMEOUT) as r:
             try:
                 r.raise_for_status()
             except ClientResponseError as exc:
@@ -393,7 +414,9 @@ async def reconcile_doi(title: str, authors: list[str], session: ClientSession) 
     }
     if authors_query:
         params["query.author"] = authors_query
-    async with session.get(url, params=params) as r:
+    async with session.get(
+        url, params=params, timeout=PAPERSCRAPER_REQUEST_TIMEOUT
+    ) as r:
         if not r.ok:
             raise DOINotFoundError("Could not reconcile DOI " + title)
         data = await r.json()
@@ -410,7 +433,7 @@ async def reconcile_doi(title: str, authors: list[str], session: ClientSession) 
 async def doi_to_bibtex(doi: str, session: ClientSession) -> str:
     # get DOI via crossref
     url = f"https://api.crossref.org/works/{doi}/transform/application/x-bibtex"
-    async with session.get(url) as r:
+    async with session.get(url, timeout=PAPERSCRAPER_REQUEST_TIMEOUT) as r:
         if not r.ok:
             raise DOINotFoundError(
                 f"Per HTTP status code {r.status}, could not resolve DOI {doi}."
@@ -634,6 +657,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
         async with ss_session.get(
             url=google_endpoint if search_type == "google" else endpoint,
             params=google_params if search_type == "google" else params,
+            timeout=PAPERSCRAPER_REQUEST_TIMEOUT,
         ) as response:
             try:
                 response.raise_for_status()
@@ -681,7 +705,9 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     if year is not None:
                         local_p["year"] = year
                     async with ss_sub_session.get(
-                        url=endpoint, params=local_p
+                        url=endpoint,
+                        params=local_p,
+                        timeout=PAPERSCRAPER_REQUEST_TIMEOUT,
                     ) as response:
                         if not response.ok:
                             logger.warning(
@@ -701,7 +727,9 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                         )
                         del local_p["year"]
                         async with ss_sub_session.get(
-                            url=endpoint, params=local_p
+                            url=endpoint,
+                            params=local_p,
+                            timeout=PAPERSCRAPER_REQUEST_TIMEOUT,
                         ) as resp:
                             if not resp.ok:
                                 logger.warning(
@@ -846,8 +874,7 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
         rate_limit=30,
     ) as session:
         async with session.get(
-            url=endpoint,
-            params=params,
+            url=endpoint, params=params, timeout=PAPERSCRAPER_REQUEST_TIMEOUT
         ) as response:
             if not response.ok:
                 raise RuntimeError(

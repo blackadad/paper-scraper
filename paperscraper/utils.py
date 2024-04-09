@@ -154,8 +154,8 @@ def check_pdf(path: str | os.PathLike, verbose: bool | Logger = False) -> bool:
 
 
 # SEE: https://www.crossref.org/blog/dois-and-matching-regular-expressions/
-# Test cases: https://regex101.com/r/xtI5bS/4
-pattern = r"10.\d{4,9}(?:[\/\.][a-z]*[\d.]+[-;():\w]*)+"
+# Test cases: https://regex101.com/r/xtI5bS/5
+pattern = r"10.\d{4,9}(?:[\/\.][a-z-]*[\d.]+[-;():\w]*)+"
 compiled_pattern = re.compile(pattern, re.IGNORECASE)
 
 

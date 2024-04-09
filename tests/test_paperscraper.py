@@ -1,7 +1,10 @@
+import asyncio
 import os
+import time
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
 
+import aiohttp
 from pybtex.database import parse_string
 
 import paperscraper
@@ -15,6 +18,48 @@ from paperscraper.lib import (
     reconcile_doi,
 )
 from paperscraper.utils import ThrottledClientSession, find_doi
+
+
+class TestThrottledClientSession(IsolatedAsyncioTestCase):
+    async def test_throttling(self) -> None:
+
+        async def get(session_: aiohttp.ClientSession) -> None:
+            async with session_.get(
+                "http://example.com", timeout=aiohttp.ClientTimeout(3.0)
+            ) as response:
+                response.raise_for_status()
+                await response.text()
+
+        tic = time.perf_counter()
+        async with ThrottledClientSession() as session:
+            await asyncio.gather(*(get(session) for _ in range(6)))
+        toc = time.perf_counter()
+        assert toc - tic < 1, "Expected no throttling"
+
+        tic = time.perf_counter()
+        async with ThrottledClientSession(rate_limit=2) as session:
+            await asyncio.gather(*(get(session) for _ in range(6)))
+        toc = time.perf_counter()
+        assert 2.5 <= toc - tic <= 4.0, "Expected throttling"
+
+    async def test_can_timeout(self) -> None:
+        for rate_limit in (None, 1):
+            async with ThrottledClientSession(rate_limit=rate_limit) as session:
+                tic = time.perf_counter()
+                try:
+                    async with session.get(
+                        # This URL should always timeout
+                        "http://example.com:81",
+                        timeout=aiohttp.ClientTimeout(3.0),
+                    ):
+                        pass
+                except asyncio.TimeoutError:
+                    toc = time.perf_counter()
+                    assert 3.0 <= toc - tic <= 5.0, "Expected timeout"
+                else:
+                    raise AssertionError(
+                        f"Should have timed out with rate limit {rate_limit}."
+                    )
 
 
 class TestCrossref(IsolatedAsyncioTestCase):

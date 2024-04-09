@@ -665,7 +665,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 if response.status == 404 and search_type == "doi":  # noqa: PLR2004
                     raise DOINotFoundError(f"DOI {query} not found.") from exc
                 raise RuntimeError(
-                    f"Error searching papers given query {query}."
+                    f"Error searching papers given query {query!r}."
                 ) from exc
             data = await response.json()
         if search_type == "default":

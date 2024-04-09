@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import random
 import re
@@ -13,6 +14,8 @@ from typing import cast
 
 import aiohttp
 import fitz
+
+logger = logging.getLogger(__name__)
 
 
 class ThrottledClientSession(aiohttp.ClientSession):
@@ -92,8 +95,8 @@ class ThrottledClientSession(aiohttp.ClientSession):
                 await asyncio.sleep(sleep)
         except asyncio.CancelledError:
             pass
-        except Exception as err:
-            print(str(err))
+        except Exception:
+            logger.exception("Unexpected failure in queue filling.")
 
     async def _allow(self) -> None:
         if self._queue is not None:

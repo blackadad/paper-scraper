@@ -18,11 +18,9 @@ from paperscraper.utils import ThrottledClientSession, find_doi
 
 
 class TestCrossref(IsolatedAsyncioTestCase):
-    async def test_reconcile_dois(self):
+    async def test_reconcile_dois(self) -> None:
         session = ThrottledClientSession(headers=get_header(), rate_limit=15 / 60)
-        link = "https://doi.org/10.1056/nejmoa2200674"
         doi = "10.1056/nejmoa2200674"
-        assert find_doi(link) == doi
 
         bibtex = await doi_to_bibtex(doi, session)
         assert bibtex

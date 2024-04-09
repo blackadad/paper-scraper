@@ -172,13 +172,17 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
 async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:
     url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_id}"
     async with session.get(url) as r:
-        if not r.ok:
-            raise RuntimeError(f"No paper with pmc id {pmc_id}. {url} {r.status}")
+        try:
+            r.raise_for_status()
+        except ClientResponseError as exc:
+            raise RuntimeError(
+                f"Failed to download PubMed Central ID {pmc_id} from URL {url}."
+            ) from exc
         html_text = await r.text()
         pdf_link = re.search(r'href="(.*\.pdf)"', html_text)
         if pdf_link is None:
             raise RuntimeError(
-                f"No PDF link found for PubMed Central ID {pmc_id}. {url}"
+                f"No PDF link matched for PubMed Central ID {pmc_id} from URL {url}."
             )
         return f"https://www.ncbi.nlm.nih.gov{pdf_link.group(1)}"
 
@@ -203,15 +207,17 @@ async def pmc_to_pdf(
 ) -> None:
     pdf_url = await find_pmc_pdf_link(pmc_id, session)
     async with session.get(pdf_url, allow_redirects=True) as r:
-        exc: Exception | None = None
-        with contextlib.suppress(ClientResponseError):
+        cause_exc: Exception | None = None
+        try:
             r.raise_for_status()
+        except ClientResponseError as exc:
+            cause_exc = exc
         if not await likely_pdf(r):
-            exc = ValueError("Not a PDF.")
-        if exc:
+            cause_exc = ValueError("Not a PDF.")
+        if cause_exc:
             raise RuntimeError(
                 f"Failed to convert PubMed Central ID {pmc_id} to PDF given URL {pdf_url}."
-            ) from exc
+            ) from cause_exc
         with open(path, "wb") as f:  # noqa: ASYNC101
             f.write(await r.read())
 

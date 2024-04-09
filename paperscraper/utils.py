@@ -27,18 +27,23 @@ class ThrottledClientSession(aiohttp.ClientSession):
     MAX_WAIT_FOR_CLOSE = 6.0  # sec
     TIME_BASE = MAX_WAIT_FOR_CLOSE - 1  # sec
 
-    def __init__(self, rate_limit: float | None = None, *args, **kwargs) -> None:
+    def __init__(
+        self, rate_limit: float | None = None, retry_count: int = 5, *args, **kwargs
+    ) -> None:
         """
         Initialize.
 
         Args:
             rate_limit: Optional number of requests per second to throttle. If left as
                 None, no throttling is applied.
+            retry_count: Number of retries to attempt on service limit status codes, set
+                to 0 to disable retries.
             *args: Positional arguments to pass to aiohttp.ClientSession.__init__.
             **kwargs: Keyword arguments to pass to aiohttp.ClientSession.__init__.
         """
         super().__init__(*args, **kwargs)
         self._rate_limit = rate_limit
+        self._retry_count = retry_count
         self._start_time = time.time()
         if rate_limit is not None:
             queue_size = int(rate_limit * self.TIME_BASE)
@@ -102,7 +107,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
 
     async def _request(self, *args, **kwargs) -> aiohttp.ClientResponse:
         """Throttled _request()."""
-        for retry_num in range(5):
+        for retry_num in range(self._retry_count):
             await self._wait_can_make_request()
             response = await super()._request(*args, **kwargs)
             if response.status not in self.SERVICE_LIMIT_REACHED_STATUS_CODES:

@@ -143,23 +143,17 @@ def check_pdf(path: str | os.PathLike, verbose: bool | Logger = False) -> bool:
     return True
 
 
-pattern = r"10.\d{4,9}/[-._;():A-Z0-9]+"
+# SEE: https://www.crossref.org/blog/dois-and-matching-regular-expressions/
+# Test cases: https://regex101.com/r/xtI5bS/2
+pattern = r"10.\d{4,9}(?:[\/\.][a-z]*\d+[-;():\w]*)+"
 compiled_pattern = re.compile(pattern, re.IGNORECASE)
 
 
-def find_doi(text):
-    # https://www.crossref.org/blog/dois-and-matching-regular-expressions/
+def find_doi(text: str) -> str | None:
     match = compiled_pattern.search(text)
-    if match:
-        proposed = match.group()
-    else:
+    if not match:
         return None
-
-    # strip off any trailing marksers
-    proposed = proposed.replace(".abstract", "")
-    proposed = proposed.replace(".full-text", "")
-    proposed = proposed.replace(".full", "")
-    return proposed.replace(".pdf", "")
+    return match.group()
 
 
 def get_hostname(url):

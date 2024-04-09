@@ -107,6 +107,11 @@ def test_find_doi() -> None:
             "https://iopscience.iop.org/article/10.7567/abc123abc.pdf",
             "10.7567/abc123abc",
         ),
+        (
+            "https://dx.doi.org/10.1016/j.arth.2005.04.023",
+            "10.1016/j.arth.2005.04.023",
+        ),
+        ("https://doi.org/10.48550/arXiv.2401.00044", "10.48550/arXiv.2401.00044"),
     ]
     for link, expected in test_parameters:
         if expected is None:

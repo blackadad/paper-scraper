@@ -203,10 +203,15 @@ async def pmc_to_pdf(
 ) -> None:
     pdf_url = await find_pmc_pdf_link(pmc_id, session)
     async with session.get(pdf_url, allow_redirects=True) as r:
-        if not r.ok or not await likely_pdf(r):
+        exc: Exception | None = None
+        with contextlib.suppress(ClientResponseError):
+            r.raise_for_status()
+        if not await likely_pdf(r):
+            exc = ValueError("Not a PDF.")
+        if exc:
             raise RuntimeError(
-                f"No paper with PubMed Central ID {pmc_id}. {pdf_url} {r.status}"
-            )
+                f"Failed to convert PubMed Central ID {pmc_id} to PDF given URL {pdf_url}."
+            ) from exc
         with open(path, "wb") as f:  # noqa: ASYNC101
             f.write(await r.read())
 

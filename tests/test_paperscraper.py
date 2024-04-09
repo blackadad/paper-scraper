@@ -116,6 +116,18 @@ def test_find_doi() -> None:
             "https://doi.org/10.26434/chemrxiv-2023-fw8n4-v3",
             "10.26434/chemrxiv-2023-fw8n4-v3",
         ),
+        (
+            "https://www.biorxiv.org/content/10.1101/2022.08.05.502972.full.pdf",
+            "10.1101/2022.08.05.502972",
+        ),
+        (
+            "https://doi.org/10.1002/(SICI)1097-0177(200006)218:2%3C235::AID-DVDY2%3E3.0.CO;2-G",
+            "10.1002/(SICI)1097-0177(200006)218:2<235::AID-DVDY2>3.0.CO;2-G",
+        ),
+        (
+            "https://anatomypubs.onlinelibrary.wiley.com/doi/10.1002/(SICI)1097-0177(200006)218:2%3C235::AID-DVDY2%3E3.0.CO;2-G",
+            "10.1002/(SICI)1097-0177(200006)218:2<235::AID-DVDY2>3.0.CO;2-G",
+        ),
     ]
     for link, expected in test_parameters:
         if expected is None:

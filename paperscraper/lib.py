@@ -13,7 +13,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from aiohttp import ClientResponseError, ClientSession, InvalidURL
+from aiohttp import ClientResponse, ClientResponseError, ClientSession, InvalidURL
 
 from .exceptions import DOINotFoundError
 from .headers import get_header
@@ -80,7 +80,7 @@ def format_bibtex(bibtex, key, clean: bool = True) -> str:
         return bd.entries[key].fields["title"]
 
 
-async def likely_pdf(response) -> bool:
+async def likely_pdf(response: ClientResponse) -> bool:
     try:
         text = await response.text()
         if "Invalid article ID" in text:
@@ -198,7 +198,9 @@ async def pubmed_to_pdf(pubmed_id, path, session: ClientSession) -> None:
     await pmc_to_pdf(pmc_id, path, session)
 
 
-async def pmc_to_pdf(pmc_id, path, session: ClientSession) -> None:
+async def pmc_to_pdf(
+    pmc_id: str, path: str | os.PathLike, session: ClientSession
+) -> None:
     pdf_url = await find_pmc_pdf_link(pmc_id, session)
     async with session.get(pdf_url, allow_redirects=True) as r:
         if not r.ok or not await likely_pdf(r):

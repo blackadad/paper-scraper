@@ -5,7 +5,7 @@ import logging
 import os
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Coroutine, Literal
+from typing import Any, Literal
 
 from .headers import get_header
 from .utils import ThrottledClientSession, check_pdf
@@ -27,8 +27,8 @@ class Scraper:
     def __init__(
         self, callback: Callable[[str, dict[str, str]], Awaitable] | None = None
     ):
-        self.scrapers = []
-        self.sorted_scrapers = []
+        self.scrapers: list[ScraperFunction] = []
+        self.sorted_scrapers: list[list[ScraperFunction]] = []
         self.callback = callback
 
     def register_scraper(
@@ -105,7 +105,7 @@ class Scraper:
         papers: Sequence[dict[str, Any]],
         paper_file_dump_dir: str | os.PathLike,
         paper_parser: (
-            Callable[[dict[str, Any]], Coroutine[Any, Any, dict[str, Any]]] | None
+            Callable[[dict[str, Any]], Awaitable[dict[str, Any]]] | None
         ) = None,
         batch_size: int = 10,
         limit: int | None = None,
@@ -127,13 +127,12 @@ class Scraper:
         Returns:
             Dictionary mapping path to downloaded paper to parsed metadata.
         """
-        if paper_parser is None:
+        if paper_parser is not None:
+            parser = paper_parser
+        else:
 
             async def parser(paper: dict[str, Any]) -> dict[str, Any]:
                 return paper
-
-        else:
-            parser = paper_parser
 
         async def scrape_parse(
             paper: dict[str, Any], i: int
@@ -142,7 +141,7 @@ class Scraper:
             success = await self.scrape(paper, path, i=i, logger=logger)
             return (path, await parser(paper)) if success else False
 
-        aggregated = {}
+        aggregated: dict[str, dict[str, Any]] = {}
         for i in range(0, len(papers), batch_size):
             aggregated |= {
                 r[0]: r[1]

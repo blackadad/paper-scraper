@@ -321,7 +321,7 @@ async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, An
         "year": paper["year"],
         "url": paper["url"],
         "paperId": paper["paperId"],
-        "doi": paper["externalIds"].get("DOI", None),
+        "doi": paper["externalIds"].get("DOI"),
         "citationCount": paper["citationCount"],
         "title": paper["title"],
     }
@@ -331,7 +331,7 @@ async def parse_google_scholar_metadata(
     paper: dict[str, Any], session: ClientSession
 ) -> dict[str, Any]:
     """Parse raw paper metadata from Google Scholar into a more rich format."""
-    doi: str | None = paper["externalIds"].get("DOI", None)
+    doi: str | None = paper["externalIds"].get("DOI")
     if doi:
         try:
             bibtex = await doi_to_bibtex(doi, session)
@@ -373,7 +373,7 @@ async def parse_google_scholar_metadata(
         "year": paper["year"],
         "url": paper["link"],
         "paperId": paper["paperId"],
-        "doi": paper["externalIds"].get("DOI", None),
+        "doi": paper["externalIds"].get("DOI"),
         "citationCount": paper["citationCount"],
         "title": paper["title"],
     }
@@ -614,7 +614,9 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
         if "as_ylo" not in google_params:
             logger.warning(f"Could not parse year {year}")
 
-    paths = _paths or {}
+    paths: dict[str, dict[str, Any]] = (
+        {str(k): v for k, v in _paths.items()} if _paths is not None else {}
+    )
     scraper = scraper or default_scraper()
     ssheader = get_header()
     if semantic_scholar_api_key is not None:
@@ -686,11 +688,11 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                                 f" text {await response.text()!r}."
                             )
                             return None
-                        response = await response.json()  # noqa: PLW2901
+                        response_data = await response.json()
                     if (
-                        "data" not in response
+                        "data" not in response_data
                         and year is not None
-                        and response["total"] == 0
+                        and response_data["total"] == 0
                     ):
                         logger.info(
                             f"{title} | {year} not found. Now trying without year"
@@ -706,12 +708,14 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                                     f" status {resp.status}, reason {resp.reason},"
                                     f" text {await resp.text()!r}."
                                 )
-                            response = await resp.json()
-                    if "data" in response:
+                            response_data = await resp.json()
+                    if "data" in response_data:
                         if pdf_link is not None:
                             # Google Scholar url takes precedence
-                            response["data"][0]["openAccessPdf"] = {"url": pdf_link}
-                        return response["data"][0]
+                            response_data["data"][0]["openAccessPdf"] = {
+                                "url": pdf_link
+                            }
+                        return response_data["data"][0]
                     return None
 
                 responses = await asyncio.gather(
@@ -759,7 +763,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 query,
                 limit=limit,
                 pdir=pdir,
-                _paths=paths,
+                _paths=paths,  # type: ignore[arg-type]
                 _limit=_limit,
                 _offset=_offset + (20 if search_type == "google" else _limit),
                 logger=logger,
@@ -827,7 +831,9 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
         if "as_ylo" not in params:
             logger.warning(f"Could not parse year {year}")
 
-    paths = _paths or {}
+    paths: dict[str, dict[str, Any]] = (
+        {str(k): v for k, v in _paths.items()} if _paths is not None else {}
+    )
     scraper = scraper or default_scraper()
     ssheader = get_header()
     # add key to headers
@@ -919,7 +925,7 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
                 query,
                 limit=limit,
                 pdir=pdir,
-                _paths=paths,
+                _paths=paths,  # type: ignore[arg-type]
                 _offset=_offset + limit,
                 _limit=_limit,
                 logger=logger,

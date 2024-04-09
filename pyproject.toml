@@ -43,6 +43,61 @@ check-hidden = true
 ignore-regex = ".{1024}|.*codespell-ignore.*"
 ignore-words-list = "cros,ser"
 
+[tool.mypy]
+# Type-checks the interior of functions without type annotations.
+check_untyped_defs = true
+# Allows enabling one or multiple error codes globally. Note: This option will
+# override disabled error codes from the disable_error_code option.
+enable_error_code = [
+    "ignore-without-code",
+    "mutable-override",
+    "redundant-cast",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "truthy-iterable",
+    "unreachable",
+    "unused-ignore",
+]
+# Shows a short summary line after error messages.
+error_summary = false
+# A regular expression that matches file names, directory names and paths which mypy
+# should ignore while recursively discovering files to check. Use forward slashes (/) as
+# directory separators on all platforms.
+exclude = [
+    "^\\.?venv",  # SEE: https://regex101.com/r/0rp5Br/1
+]
+# Use visually nicer output in error messages: use soft word wrap, show source
+# code snippets, and show error location markers.
+pretty = true
+# Shows column numbers in error messages.
+show_column_numbers = true
+# Shows error codes in error messages.
+# SEE: https://mypy.readthedocs.io/en/stable/error_codes.html#error-codes
+show_error_codes = true
+# Prefixes each error with the relevant context.
+show_error_context = true
+# Warns about casting an expression to its inferred type.
+warn_redundant_casts = true
+# Shows a warning when encountering any code inferred to be unreachable or
+# redundant after performing type analysis.
+warn_unreachable = true
+# Warns about per-module sections in the config file that do not match any
+# files processed when invoking mypy.
+warn_unused_configs = true
+# Warns about unneeded `# type: ignore` comments.
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# Suppresses error messages about imports that cannot be resolved.
+ignore_missing_imports = true
+# Per-module configuration options
+module = [
+    "fitz",  # SEE: https://github.com/pymupdf/PyMuPDF/issues/3361
+    "nest_asyncio",
+    "pybtex.*",  # SEE: https://bitbucket.org/pybtex-devs/pybtex/issues/141/type-annotations
+]
+
 [tool.pytest.ini_options]
 # List of directories that should be searched for tests when no specific directories,
 # files or test ids are given in the command line when executing pytest from the rootdir

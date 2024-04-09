@@ -269,7 +269,7 @@ class Test7(IsolatedAsyncioTestCase):
     async def test_custom_scraper(self):
         query = "covid vaccination"
         scraper = paperscraper.Scraper()
-        scraper = scraper.register_scraper(
+        scraper.register_scraper(
             lambda paper, path, **kwargs: None,  # noqa: ARG005
             priority=0,
             name="test",

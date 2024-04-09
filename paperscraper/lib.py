@@ -635,12 +635,14 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             url=google_endpoint if search_type == "google" else endpoint,
             params=google_params if search_type == "google" else params,
         ) as response:
-            if not response.ok:
+            try:
+                response.raise_for_status()
+            except ClientResponseError as exc:
                 if response.status == 404 and search_type == "doi":  # noqa: PLR2004
-                    raise DOINotFoundError(f"DOI {query} not found")
+                    raise DOINotFoundError(f"DOI {query} not found.") from exc
                 raise RuntimeError(
-                    f"Error searching papers: {response.status} {response.reason} {await response.text()}"  # noqa: E501
-                )
+                    f"Error searching papers given query {query}."
+                ) from exc
             data = await response.json()
         if search_type == "default":
             has_more_data = _offset + _limit < data["total"]

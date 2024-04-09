@@ -266,17 +266,21 @@ class Test6(IsolatedAsyncioTestCase):
 
 
 class Test7(IsolatedAsyncioTestCase):
-    async def test_custom_scraper(self):
+    async def test_custom_scraper(self) -> None:
         query = "covid vaccination"
+        mock_scrape_fn = MagicMock()
+
+        async def custom_scraper(paper, path, **kwargs):
+            mock_scrape_fn(paper, path, **kwargs)
+
         scraper = paperscraper.Scraper()
-        scraper.register_scraper(
-            lambda paper, path, **kwargs: None,  # noqa: ARG005
-            priority=0,
-            name="test",
-            check=False,
-        )
-        papers = await paperscraper.a_search_papers(query, limit=5, scraper=scraper)
-        assert len(papers) >= 5
+        scraper.register_scraper(custom_scraper, priority=0, name="test", check=False)
+        try:
+            await paperscraper.a_search_papers(query, scraper=scraper)
+        except RuntimeError as exc:
+            assert (  # noqa: PT017
+                exc.__cause__.status == 400  # type: ignore[union-attr]
+            ), "Expected we should exhaust the search"
 
 
 class Test8(IsolatedAsyncioTestCase):

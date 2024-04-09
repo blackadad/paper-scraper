@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import logging
 import os
 import random
 import re
@@ -14,88 +14,91 @@ from typing import cast
 import aiohttp
 import fitz
 
+logger = logging.getLogger(__name__)
+
 
 class ThrottledClientSession(aiohttp.ClientSession):
     """
-    Rate-throttled client session class inherited from aiohttp.ClientSession).
+    Rate-throttled client session.
 
-    USAGE:
-        replace `session = aiohttp.ClientSession()`
-        with `session = ThrottledClientSession(rate_limit=15)`
-
+    Original source: https://stackoverflow.com/a/60357775
     """
 
-    MIN_SLEEP = 0.001
+    MAX_WAIT_FOR_CLOSE = 6.0  # sec
+    TIME_BASE = MAX_WAIT_FOR_CLOSE - 1  # sec
 
-    def __init__(self, rate_limit: float | None = None, *args, **kwargs) -> None:
+    def __init__(
+        self, rate_limit: float | None = None, retry_count: int = 5, *args, **kwargs
+    ) -> None:
         """
         Initialize.
 
         Args:
-            rate_limit: Optional number of requests per second to throttle.
+            rate_limit: Optional number of requests per second to throttle. If left as
+                None, no throttling is applied.
+            retry_count: Number of retries to attempt on service limit status codes, set
+                to 0 to disable retries.
             *args: Positional arguments to pass to aiohttp.ClientSession.__init__.
             **kwargs: Keyword arguments to pass to aiohttp.ClientSession.__init__.
         """
         super().__init__(*args, **kwargs)
-        self.rate_limit = rate_limit
+        self._rate_limit = rate_limit
+        self._retry_count = retry_count
         self._start_time = time.time()
         if rate_limit is not None:
-            if rate_limit <= 0:
-                raise ValueError("rate_limit must be positive")
-            self._queue: asyncio.Queue | None = asyncio.Queue(
-                maxsize=max(2, int(rate_limit))
-            )
-            self._fillerTask: asyncio.Task | None = asyncio.create_task(
-                self._filler(rate_limit)
-            )
+            queue_size = int(rate_limit * self.TIME_BASE)
+            if queue_size < 1:
+                raise ValueError(
+                    f"Rate limit {rate_limit} is too low for a responsive close, please"
+                    f" increase to at least {1 / self.TIME_BASE} requests/sec."
+                )
+            self._queue: asyncio.Queue | None = asyncio.Queue(maxsize=queue_size)
+            self._fillerTask: asyncio.Task | None = asyncio.create_task(self._filler())
         else:
             self._queue = None
             self._fillerTask = None
-
-    def _get_sleep(self) -> float | None:
-        if self.rate_limit is not None:
-            return max(1 / self.rate_limit, self.MIN_SLEEP)
-        return None
 
     async def close(self) -> None:
         """Close rate-limiter's "bucket filler" task."""
         if self._fillerTask is not None:
             self._fillerTask.cancel()
-            with contextlib.suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(self._fillerTask, timeout=0.5)
+            await asyncio.wait_for(self._fillerTask, timeout=self.MAX_WAIT_FOR_CLOSE)
         await super().close()
 
-    async def _filler(self, rate_limit: float = 1) -> None:
+    async def _filler(self) -> None:
         """Filler task to fill the leaky bucket algo."""
-        if self._queue is None:
+        if self._rate_limit is None:
             return
+        queue = cast(asyncio.Queue, self._queue)
+        # This sleep interval (sec) is enough to enqueue at least 1 request
+        # - If 1 / rate_limit is above 1e-3, we should add on average 1 request
+        #   to the queue per below loop iteration
+        # - Otherwise, we'll add on average above 1 request to the queue per
+        #   below loop iteration
+        sleep_interval = max(1 / self._rate_limit, 1e-3)  # sec
+        ts_before_sleep = time.perf_counter()
         try:
-            self.rate_limit = rate_limit
-            sleep = cast(float, self._get_sleep())
-            updated_at = time.perf_counter()
             while True:
-                now = time.perf_counter()
-                # Calculate how many tokens to add to the bucket based on elapsed time.
-                requests_to_add = int((now - updated_at) * rate_limit)
+                ts_after_sleep = time.perf_counter()
+                # Calculate how many requests to add to the bucket based on elapsed time.
+                num_requests_to_add = int(
+                    (ts_after_sleep - ts_before_sleep) * self._rate_limit
+                )
                 # Calculate available space in the queue to avoid overfilling it.
-                available_space = self._queue.maxsize - self._queue.qsize()
-                requests_to_add = min(
-                    requests_to_add, available_space
-                )  # Only add as many requests as there is space.
+                available_space = queue.maxsize - queue.qsize()
+                # Only add as many requests as there is space.
+                for _ in range(min(num_requests_to_add, available_space)):
+                    # Insert a request (represented as None) into the queue
+                    queue.put_nowait(None)
 
-                for _ in range(requests_to_add):
-                    self._queue.put_nowait(
-                        None
-                    )  # Insert a request (represented as None) into the queue
-
-                updated_at = now
-                await asyncio.sleep(sleep)
+                ts_before_sleep = ts_after_sleep
+                await asyncio.sleep(sleep_interval)
         except asyncio.CancelledError:
             pass
-        except Exception as err:
-            print(str(err))
+        except Exception:
+            logger.exception("Unexpected failure in queue filling.")
 
-    async def _allow(self) -> None:
+    async def _wait_can_make_request(self) -> None:
         if self._queue is not None:
             await self._queue.get()
             self._queue.task_done()
@@ -103,23 +106,28 @@ class ThrottledClientSession(aiohttp.ClientSession):
     SERVICE_LIMIT_REACHED_STATUS_CODES: Collection[int] = {429, 503, 504}
 
     async def _request(self, *args, **kwargs) -> aiohttp.ClientResponse:
-        """Throttled _request()."""
-        for retries in range(5):
-            await self._allow()
+        for retry_num in range(self._retry_count + 1):
+            await self._wait_can_make_request()
             response = await super()._request(*args, **kwargs)
-            if response.status in self.SERVICE_LIMIT_REACHED_STATUS_CODES:
-                if self.rate_limit is not None:
-                    await asyncio.sleep(
-                        max(
-                            3 * self.rate_limit,
-                            (2**retries) * 0.1 + random.random() * 0.1,
-                        )
-                    )
-                    continue
-                raise NotImplementedError(
-                    "Hit a service limit without a rate limit, please specify a rate limit."
+            if response.status not in self.SERVICE_LIMIT_REACHED_STATUS_CODES:
+                break
+            if self._rate_limit is not None:
+                exp_backoff_with_jitter = 0.1 * (2**retry_num + random.random())
+                logger.warning(
+                    f"Hit a service limit per status {response.status}, sleeping"
+                    f" {exp_backoff_with_jitter}-sec before retry {retry_num + 1}."
                 )
-            break
+                await asyncio.sleep(exp_backoff_with_jitter)
+                # NOTE: on next iteration, we have to wait again, which ensures
+                # the rate_limit is adhered to
+                continue
+            raise NotImplementedError(
+                "Hit a service limit without a rate limit, please specify a rate limit."
+            )
+        else:
+            raise RuntimeError(
+                f"Failed to avoid a service limit across {self._retry_count} retries."
+            )
         return response
 
 

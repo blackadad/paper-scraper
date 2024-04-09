@@ -321,7 +321,7 @@ async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, An
         "year": paper["year"],
         "url": paper["url"],
         "paperId": paper["paperId"],
-        "doi": paper["externalIds"].get("DOI", None),
+        "doi": paper["externalIds"].get("DOI"),
         "citationCount": paper["citationCount"],
         "title": paper["title"],
     }
@@ -331,7 +331,7 @@ async def parse_google_scholar_metadata(
     paper: dict[str, Any], session: ClientSession
 ) -> dict[str, Any]:
     """Parse raw paper metadata from Google Scholar into a more rich format."""
-    doi: str | None = paper["externalIds"].get("DOI", None)
+    doi: str | None = paper["externalIds"].get("DOI")
     if doi:
         try:
             bibtex = await doi_to_bibtex(doi, session)
@@ -367,7 +367,7 @@ async def parse_google_scholar_metadata(
         "year": paper["year"],
         "url": paper["link"],
         "paperId": paper["paperId"],
-        "doi": paper["externalIds"].get("DOI", None),
+        "doi": paper["externalIds"].get("DOI"),
         "citationCount": paper["citationCount"],
         "title": paper["title"],
     }

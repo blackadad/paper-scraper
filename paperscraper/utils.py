@@ -113,19 +113,16 @@ class ThrottledClientSession(aiohttp.ClientSession):
             response = await super()._request(*args, **kwargs)
             if response.status not in self.SERVICE_LIMIT_REACHED_STATUS_CODES:
                 break
-            if self._rate_limit is not None:
+            if retry_num < self._retry_count:
                 exp_backoff_with_jitter = 0.1 * (2**retry_num + random.random())
                 logger.warning(
                     f"Hit a service limit per status {response.status}, sleeping"
-                    f" {exp_backoff_with_jitter}-sec before retry {retry_num + 1}."
+                    f" {exp_backoff_with_jitter:.2f}-sec before retry {retry_num + 1}."
                 )
                 await asyncio.sleep(exp_backoff_with_jitter)
                 # NOTE: on next iteration, we have to wait again, which ensures
                 # the rate_limit is adhered to
                 continue
-            raise NotImplementedError(
-                "Hit a service limit without a rate limit, please specify a rate limit."
-            )
         else:
             raise RuntimeError(
                 f"Failed to avoid a service limit across {self._retry_count} retries."

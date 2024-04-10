@@ -70,7 +70,7 @@ def format_bibtex(bibtex, key, clean: bool = True) -> str:
     style = unsrtalpha.Style()
     try:
         bd = parse_string(clean_upbibtex(bibtex) if clean else bibtex, "bibtex")
-    except Exception as e:  # noqa: F841
+    except Exception:
         return "Ref " + key
     try:
         entry = style.format_entry(label="1", entry=bd.entries[key])

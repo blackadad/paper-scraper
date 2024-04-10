@@ -7,7 +7,7 @@ import os
 import re
 import sys
 from collections.abc import Awaitable, Callable
-from enum import IntEnum, auto
+from enum import Enum, IntEnum, auto
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -302,22 +302,21 @@ async def local_scraper(paper, path) -> bool:  # noqa: ARG001
 def default_scraper(
     callback: Callable[[str, dict[str, str]], Awaitable] | None = None
 ) -> Scraper:
-
     scraper = Scraper(callback=callback)
-    scraper.register_scraper(arxiv_scraper, attach_session=True, rate_limit=30 / 60)
-    scraper.register_scraper(medrxiv_scraper, attach_session=True, rate_limit=30 / 60)
-    scraper.register_scraper(biorxiv_scraper, attach_session=True, rate_limit=30 / 60)
-    scraper.register_scraper(chemrxiv_scraper, attach_session=True, rate_limit=30 / 60)
+    scraper.register_scraper(local_scraper, priority=12)
+    scraper_rate_limit_config: dict[str, Any] = {
+        "attach_session": True,
+        "rate_limit": RateLimits.SCRAPER.value,
+    }
+    scraper.register_scraper(arxiv_scraper, **scraper_rate_limit_config)
+    scraper.register_scraper(medrxiv_scraper, **scraper_rate_limit_config)
+    scraper.register_scraper(biorxiv_scraper, **scraper_rate_limit_config)
+    scraper.register_scraper(chemrxiv_scraper, **scraper_rate_limit_config)
+    scraper.register_scraper(pmc_scraper, priority=9, **scraper_rate_limit_config)
+    scraper.register_scraper(pubmed_scraper, priority=9, **scraper_rate_limit_config)
     scraper.register_scraper(
-        pmc_scraper, priority=9, rate_limit=30 / 60, attach_session=True
+        openaccess_scraper, priority=9, **scraper_rate_limit_config
     )
-    scraper.register_scraper(
-        pubmed_scraper, priority=9, rate_limit=30 / 60, attach_session=True
-    )
-    scraper.register_scraper(
-        openaccess_scraper, attach_session=True, priority=9, rate_limit=30 / 60
-    )
-    scraper.register_scraper(local_scraper, attach_session=False, priority=12)
     return scraper
 
 
@@ -448,6 +447,16 @@ async def doi_to_bibtex(doi: str, session: ClientSession) -> str:
     return data.replace(key, new_key)
 
 
+class RateLimits(float, Enum):
+    """Rate limits (requests/sec) based on API provider."""
+
+    SEMANTIC_SCHOLAR = 90.0
+    GOOGLE_SCHOLAR = 30.0
+    CROSSREF = 30.0  # noqa: PIE796
+    SCRAPER = 30 / 60
+    FALLBACK_SLOW = 15 / 60
+
+
 SEMANTIC_SCHOLAR_API_FIELDS: str = ",".join(
     [
         "citationStyles",
@@ -575,6 +584,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     params = {"fields": SEMANTIC_SCHOLAR_API_FIELDS}
     if _limit > 100:  # noqa: PLR2004
         raise NotImplementedError("Didn't handle Semantic Scholar pagination ('next').")
+    rate_limit: float = RateLimits.FALLBACK_SLOW.value
     endpoint, params = SematicScholarSearchType[search_type.upper()].make_url_params(
         params, query, _offset, _limit
     )
@@ -589,6 +599,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             "start": _offset,
             # TODO - add offset and limit here  # noqa: TD004
         }
+        rate_limit = RateLimits.GOOGLE_SCHOLAR.value
     elif search_type == "paper":
         raise NotImplementedError(
             f"Only added 'paper' search type to {SematicScholarSearchType.__name__},"
@@ -633,15 +644,14 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     ssheader = get_header()
     if semantic_scholar_api_key is not None:
         ssheader["x-api-key"] = semantic_scholar_api_key
+        rate_limit = RateLimits.SEMANTIC_SCHOLAR.value
     else:
         # check if it's in the environment
         with contextlib.suppress(KeyError):
             ssheader["x-api-key"] = os.environ["SEMANTIC_SCHOLAR_API_KEY"]
+            rate_limit = RateLimits.SEMANTIC_SCHOLAR.value
     async with ThrottledClientSession(
-        rate_limit=(
-            90 if "x-api-key" in ssheader or search_type == "google" else 15 / 60
-        ),
-        headers=ssheader,
+        rate_limit=rate_limit, headers=ssheader
     ) as ss_session:
         async with ss_session.get(
             url=google_endpoint if search_type == "google" else endpoint,
@@ -681,8 +691,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
 
             # want this separate, since ss is rate_limit for Google
             async with ThrottledClientSession(
-                rate_limit=90 if "x-api-key" in ssheader else 15 / 60,
-                headers=ssheader,
+                rate_limit=rate_limit, headers=ssheader
             ) as ss_sub_session:
                 # Now we need to reconcile with S2 API these results
                 async def google2s2(
@@ -855,7 +864,7 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
     # Shared rate limits here between gs/crossref
     async with ThrottledClientSession(
         headers=ssheader,
-        rate_limit=30,
+        rate_limit=RateLimits.GOOGLE_SCHOLAR.value,
     ) as session:
         async with session.get(
             url=endpoint,

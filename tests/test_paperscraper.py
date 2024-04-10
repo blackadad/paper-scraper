@@ -11,6 +11,7 @@ import paperscraper
 from paperscraper.exceptions import DOINotFoundError
 from paperscraper.headers import get_header
 from paperscraper.lib import (
+    RateLimits,
     clean_upbibtex,
     doi_to_bibtex,
     format_bibtex,
@@ -64,7 +65,9 @@ class TestThrottledClientSession(IsolatedAsyncioTestCase):
 
 class TestCrossref(IsolatedAsyncioTestCase):
     async def test_reconcile_dois(self) -> None:
-        session = ThrottledClientSession(headers=get_header(), rate_limit=15 / 60)
+        session = ThrottledClientSession(
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
+        )
         doi = "10.1056/nejmoa2200674"
 
         bibtex = await doi_to_bibtex(doi, session)
@@ -204,7 +207,7 @@ class Test1(IsolatedAsyncioTestCase):
         arxiv_id = "1706.03762"
         path = "test.pdf"
         async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
         ) as session:
             await paperscraper.arxiv_to_pdf(arxiv_id, path, session)
         assert paperscraper.check_pdf(path)
@@ -214,7 +217,7 @@ class Test1(IsolatedAsyncioTestCase):
         biorxiv_doi = "10.1101/2024.01.25.577217"
         path = "test.pdf"
         async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
         ) as session:
             await paperscraper.xiv_to_pdf(biorxiv_doi, path, "www.biorxiv.org", session)
         assert paperscraper.check_pdf(path)
@@ -224,7 +227,7 @@ class Test1(IsolatedAsyncioTestCase):
         biorxiv_doi = "10.1101/2024.03.06.24303847"
         path = "test.pdf"
         async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
         ) as session:
             await paperscraper.xiv_to_pdf(biorxiv_doi, path, "www.medrxiv.org", session)
         assert paperscraper.check_pdf(path)
@@ -234,7 +237,7 @@ class Test1(IsolatedAsyncioTestCase):
         pmc_id = "8971931"
         path = "test.pdf"
         async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
         ) as session:
             await paperscraper.pmc_to_pdf(pmc_id, path, session)
         assert paperscraper.check_pdf(path)
@@ -248,7 +251,7 @@ class Test1(IsolatedAsyncioTestCase):
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"
         async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
         ) as session:
             await paperscraper.pubmed_to_pdf("27525504", path, session)
         assert paperscraper.check_pdf(path)
@@ -258,7 +261,7 @@ class Test1(IsolatedAsyncioTestCase):
         link = "https://www.aclweb.org/anthology/N18-3011.pdf"
         path = "test.pdf"
         async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
         ) as session:
             await paperscraper.link_to_pdf(link, path, session)
         assert paperscraper.check_pdf(path)
@@ -269,7 +272,7 @@ class Test1(IsolatedAsyncioTestCase):
         path = "test.pdf"
         try:
             async with ThrottledClientSession(
-                headers=get_header(), rate_limit=15 / 60
+                headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
             ) as session:
                 await paperscraper.link_to_pdf(link, path, session)
             os.remove(path)
@@ -281,7 +284,7 @@ class Test1(IsolatedAsyncioTestCase):
         link = "https://www.medrxiv.org/content/medrxiv/early/2020/03/23/2020.03.20.20040055.full.pdf"
         path = "test.pdf"
         async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
         ) as session:
             await paperscraper.link_to_pdf(link, path, session)
         assert paperscraper.check_pdf(path)
@@ -291,7 +294,7 @@ class Test1(IsolatedAsyncioTestCase):
         link = "https://doi.org/10.26434/chemrxiv-2023-fw8n4"
         path = "test.pdf"
         async with ThrottledClientSession(
-            headers=get_header(), rate_limit=15 / 60
+            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
         ) as session:
             await paperscraper.link_to_pdf(link, path, session)
         assert paperscraper.check_pdf(path)

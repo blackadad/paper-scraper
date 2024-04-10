@@ -38,24 +38,23 @@ class Scraper:
         priority: int = 10,
         name: str | None = None,
         check: bool = True,
-        rate_limit: float | None = 15 / 60,
+        **attached_session_kwargs,
     ) -> None:
         kwargs = {}
         if name is None:
             name = func.__name__.replace("_scraper", "")
         if attach_session:
-            sess = ThrottledClientSession(rate_limit=rate_limit, headers=get_header())
-            kwargs["session"] = sess
+            kwargs["session"] = ThrottledClientSession(
+                **({"headers": get_header()} | attached_session_kwargs)
+            )
         self.scrapers.append(ScraperFunction(func, priority, kwargs, name, check))
         # sort scrapers by priority
         self.scrapers.sort(key=lambda x: x.priority, reverse=True)
-        # reshape sorted scrapers
-        sorted_scrapers = []
-        for priority in sorted({s.priority for s in self.scrapers}):
-            sorted_scrapers.append(  # noqa: PERF401
-                [s for s in self.scrapers if s.priority == priority]
-            )
-        self.sorted_scrapers = sorted_scrapers
+        # reshape into sorted scrapers
+        self.sorted_scrapers = [
+            [s for s in self.scrapers if s.priority == priority]
+            for priority in sorted({s.priority for s in self.scrapers})
+        ]
 
     async def scrape(
         self,

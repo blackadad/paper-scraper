@@ -20,6 +20,8 @@ from .log_formatter import CustomFormatter
 from .scraper import Scraper
 from .utils import ThrottledClientSession, encode_id, find_doi, get_hostname
 
+year_extract_pattern = re.compile(r"\b\d{4}\b")
+
 
 def clean_upbibtex(bibtex):
     # WTF Semantic Scholar?
@@ -322,7 +324,7 @@ def default_scraper(
 
 
 async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, Any]:
-    """Parse raw paper metadata from Semantic Scholar into a more rich format."""
+    """Parse raw paper metadata from Semantic Scholar into a richer format."""
     bibtex = paper["citationStyles"]["bibtex"]
     key = bibtex.split("{")[1].split(",")[0]
     return {
@@ -339,10 +341,52 @@ async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, An
     }
 
 
+async def preprocess_google_scholar_metadata(
+    paper: dict[str, Any], session: ClientSession
+) -> dict[str, Any]:
+    # get years
+    match = year_extract_pattern.findall(paper["publication_info"]["summary"])
+    year = match[0] if len(match) > 0 else None
+    paper["year"] = year
+
+    # set pdf link
+    if "resources" in paper:
+        for res in paper["resources"]:
+            if "file_format" in res and res["file_format"] == "PDF":
+                paper["openAccessPdf"] = {"url": res["link"]}
+
+    # set external ids
+    paper["externalIds"] = {}
+    if paper["link"].startswith("https://arxiv.org/abs/"):
+        paper["externalIds"]["ArXiv"] = paper["link"].split("https://arxiv.org/abs/")[1]
+
+    doi = find_doi(paper["link"])
+    if doi is not None:
+        paper["externalIds"]["DOI"] = doi
+    else:
+        # try to get DOI from crossref
+        author_query = []
+        if "authors" in paper["publication_info"]:
+            author_query = [a["name"] for a in paper["publication_info"]["authors"]]
+        doi = await reconcile_doi(paper["title"], author_query, session)
+        paper["externalIds"]["DOI"] = doi
+
+    # set citation count
+    if "cited_by" not in paper["inline_links"]:
+        # best we can do
+        paper["citationCount"] = 0
+    else:
+        paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
+
+    # set paperId to be hex digest of doi
+    paper["paperId"] = encode_id(doi)
+    return paper
+
+
 async def parse_google_scholar_metadata(
     paper: dict[str, Any], session: ClientSession
 ) -> dict[str, Any]:
-    """Parse raw paper metadata from Google Scholar into a more rich format."""
+    """Parse pre-processed paper metadata from Google Scholar into a richer format."""
     doi: str | None = paper["externalIds"].get("DOI")
     if doi:
         try:
@@ -663,11 +707,10 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 return paths
             has_more_data = "pagination" in data
             papers = data["organic_results"]
-            year_extract = re.compile(r"\b\d{4}\b")
             titles = [p["title"] for p in papers]
             years: list[str | None] = [None] * len(papers)
             for i, p in enumerate(papers):
-                match = year_extract.findall(p["publication_info"]["summary"])
+                match = year_extract_pattern.findall(p["publication_info"]["summary"])
                 if len(match) > 0:
                     years[i] = match[0]
 
@@ -793,7 +836,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     return paths
 
 
-async def a_gsearch_papers(  # noqa: C901, PLR0915
+async def a_gsearch_papers(  # noqa: C901
     query: str,
     limit: int = 10,
     pdir: str | os.PathLike = os.curdir,
@@ -870,53 +913,15 @@ async def a_gsearch_papers(  # noqa: C901, PLR0915
         if "organic_results" not in data:
             return paths
         papers = data["organic_results"]
-        year_extract = re.compile(r"\b\d{4}\b")
-
-        async def process(paper):
-            # get years
-            match = year_extract.findall(paper["publication_info"]["summary"])
-            year = match[0] if len(match) > 0 else None
-            paper["year"] = year
-
-            # set pdf link
-            if "resources" in paper:
-                for res in paper["resources"]:
-                    if "file_format" in res and res["file_format"] == "PDF":
-                        paper["openAccessPdf"] = {"url": res["link"]}
-
-            # set external ids
-            paper["externalIds"] = {}
-            if paper["link"].startswith("https://arxiv.org/abs/"):
-                paper["externalIds"]["ArXiv"] = paper["link"].split(
-                    "https://arxiv.org/abs/"
-                )[1]
-
-            doi = find_doi(paper["link"])
-            if doi is not None:
-                paper["externalIds"]["DOI"] = doi
-            else:
-                # try to get DOI from crossref
-                author_query = []
-                if "authors" in paper["publication_info"]:
-                    author_query = [
-                        a["name"] for a in paper["publication_info"]["authors"]
-                    ]
-                doi = await reconcile_doi(paper["title"], author_query, session)
-                paper["externalIds"]["DOI"] = doi
-
-            # set citation count
-            if "cited_by" not in paper["inline_links"]:
-                # best we can do
-                paper["citationCount"] = 0
-            else:
-                paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
-
-            # set paperId to be hex digest of doi
-            paper["paperId"] = encode_id(doi)
-            return paper
 
         # we only process papers that have a link
-        papers = await asyncio.gather(*[process(p) for p in papers if "link" in p])
+        papers = await asyncio.gather(
+            *(
+                preprocess_google_scholar_metadata(p, session)
+                for p in papers
+                if "link" in p
+            )
+        )
         total_papers = data["search_information"].get("total_results", 1)
         logger.info(
             f"Found {total_papers} papers, analyzing {_offset} to {_offset + len(papers)}"

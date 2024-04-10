@@ -372,11 +372,11 @@ async def preprocess_google_scholar_metadata(
         paper["externalIds"]["DOI"] = doi
 
     # set citation count
-    if "cited_by" not in paper["inline_links"]:
-        # best we can do
-        paper["citationCount"] = 0
-    else:
-        paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
+    paper["citationCount"] = (
+        int(paper["inline_links"]["cited_by"]["total"])
+        if "cited_by" in paper["inline_links"]
+        else 0  # best we can do
+    )
 
     # set paperId to be hex digest of doi
     paper["paperId"] = encode_id(doi)

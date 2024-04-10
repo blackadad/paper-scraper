@@ -154,13 +154,13 @@ def check_pdf(path: str | os.PathLike, verbose: bool | Logger = False) -> bool:
 
 
 # SEE: https://www.crossref.org/blog/dois-and-matching-regular-expressions/
-# Test cases: https://regex101.com/r/xtI5bS/5
-pattern = r"10.\d{4,9}(?:[\/\.][a-z-]*[\d.]+[-;():\w]*)+"
+# Test cases: https://regex101.com/r/xtI5bS/7
+pattern = r"10.\d{4,9}(?:[\/\.][a-z-().]*(?:.[\d]+[-<>;():\w]*)+)+"
 compiled_pattern = re.compile(pattern, re.IGNORECASE)
 
 
 def find_doi(text: str) -> str | None:
-    match = compiled_pattern.search(text)
+    match = compiled_pattern.search(urllib.parse.unquote(text))
     if not match:
         return None
     return match.group()

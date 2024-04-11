@@ -116,7 +116,8 @@ class ThrottledClientSession(aiohttp.ClientSession):
             if retry_num < self._retry_count:
                 exp_backoff_with_jitter = 0.1 * (2**retry_num + random.random())
                 logger.warning(
-                    f"Hit a service limit per status {response.status}, sleeping"
+                    f"Hit a service limit per status {response.status} with message"
+                    f" {await response.text()}, sleeping"
                     f" {exp_backoff_with_jitter:.2f}-sec before retry {retry_num + 1}."
                 )
                 await asyncio.sleep(exp_backoff_with_jitter)

@@ -356,14 +356,17 @@ async def preprocess_google_scholar_metadata(
 
     # set external ids
     paper["externalIds"] = {}
-    if paper["link"].startswith("https://arxiv.org/abs/"):
-        paper["externalIds"]["ArXiv"] = paper["link"].split("https://arxiv.org/abs/")[1]
+    if "link" in paper:
+        if paper["link"].startswith("https://arxiv.org/abs/"):
+            paper["externalIds"]["ArXiv"] = paper["link"].split(
+                "https://arxiv.org/abs/"
+            )[1]
 
-    doi = find_doi(paper["link"])
-    if doi is not None:
-        paper["externalIds"]["DOI"] = doi
-    else:
-        # try to get DOI from crossref
+        doi = find_doi(paper["link"])
+        if doi is not None:
+            paper["externalIds"]["DOI"] = doi
+    if "DOI" not in paper["externalIds"]:
+        # Fall back to getting DOI from crossref
         author_query = []
         if "authors" in paper["publication_info"]:
             author_query = [a["name"] for a in paper["publication_info"]["authors"]]
@@ -371,14 +374,14 @@ async def preprocess_google_scholar_metadata(
         paper["externalIds"]["DOI"] = doi
 
     # set citation count
-    if "cited_by" not in paper["inline_links"]:
-        # best we can do
-        paper["citationCount"] = 0
-    else:
-        paper["citationCount"] = int(paper["inline_links"]["cited_by"]["total"])
+    paper["citationCount"] = (
+        int(paper["inline_links"]["cited_by"]["total"])
+        if "cited_by" in paper["inline_links"]
+        else 0  # best we can do
+    )
 
     # set paperId to be hex digest of doi
-    paper["paperId"] = encode_id(doi)
+    paper["paperId"] = encode_id(doi)  # type: ignore[arg-type]
     return paper
 
 
@@ -925,11 +928,7 @@ async def a_gsearch_papers(  # noqa: C901
 
         # we only process papers that have a link
         papers = await asyncio.gather(
-            *(
-                preprocess_google_scholar_metadata(p, session)
-                for p in papers
-                if "link" in p
-            )
+            *(preprocess_google_scholar_metadata(p, session) for p in papers)
         )
         total_papers = data["search_information"].get("total_results", 1)
         logger.info(

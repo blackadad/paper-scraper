@@ -14,7 +14,7 @@ from typing import Any
 
 from aiohttp import ClientResponse, ClientResponseError, ClientSession, InvalidURL
 
-from .exceptions import DOINotFoundError
+from .exceptions import CitationConversionError, DOINotFoundError
 from .headers import get_header
 from .log_formatter import CustomFormatter
 from .scraper import Scraper
@@ -68,6 +68,7 @@ def format_bibtex(bibtex, key, clean: bool = True) -> str:
     # WOWOW This is hard to use
     from pybtex.database import parse_string
     from pybtex.style.formatting import unsrtalpha
+    from pybtex.style.template import FieldIsMissing
 
     style = unsrtalpha.Style()
     try:
@@ -77,8 +78,14 @@ def format_bibtex(bibtex, key, clean: bool = True) -> str:
     try:
         entry = style.format_entry(label="1", entry=bd.entries[key])
         return entry.text.render_as("text")
-    except Exception:
-        return bd.entries[key].fields["title"]
+    except FieldIsMissing:
+        try:
+            return bd.entries[key].fields["title"]
+        except KeyError as exc:
+            raise CitationConversionError(
+                f"Failed to process{' and clean up' if clean else ''} bibtex {bibtex}"
+                " due to missing a 'title' field."
+            ) from exc
 
 
 async def likely_pdf(response: ClientResponse) -> bool:
@@ -390,6 +397,7 @@ async def parse_google_scholar_metadata(
 ) -> dict[str, Any]:
     """Parse pre-processed paper metadata from Google Scholar into a richer format."""
     doi: str | None = paper["externalIds"].get("DOI")
+    citation: str | None = None
     if doi:
         try:
             bibtex = await doi_to_bibtex(doi, session)
@@ -397,7 +405,9 @@ async def parse_google_scholar_metadata(
             citation = format_bibtex(bibtex, key, clean=False)
         except DOINotFoundError:
             doi = None
-    if not doi:
+        except CitationConversionError:
+            citation = None
+    if not doi or not citation:
         # get citation by following link
         # SLOW SLOW Using SerpAPI for this
         async with session.get(

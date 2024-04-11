@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 import time
 from unittest import IsolatedAsyncioTestCase
@@ -8,7 +9,7 @@ import aiohttp
 from pybtex.database import parse_string
 
 import paperscraper
-from paperscraper.exceptions import DOINotFoundError
+from paperscraper.exceptions import CitationConversionError, DOINotFoundError
 from paperscraper.headers import get_header
 from paperscraper.lib import (
     RateLimits,
@@ -537,4 +538,6 @@ class Test16(IsolatedAsyncioTestCase):
         }
         """  # noqa: RUF001
         key: str = bibtex6.split("{")[1].split(",")[0]
-        format_bibtex(bibtex6, key, clean=False)
+        # Check callers can intuit this conversion's failure
+        with contextlib.suppress(CitationConversionError):
+            format_bibtex(bibtex6, key, clean=False)

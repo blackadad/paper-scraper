@@ -919,11 +919,7 @@ async def a_gsearch_papers(  # noqa: C901
 
         # we only process papers that have a link
         papers = await asyncio.gather(
-            *(
-                preprocess_google_scholar_metadata(p, session)
-                for p in papers
-                if "link" in p
-            )
+            *(preprocess_google_scholar_metadata(p, session) for p in papers)
         )
         total_papers = data["search_information"].get("total_results", 1)
         logger.info(

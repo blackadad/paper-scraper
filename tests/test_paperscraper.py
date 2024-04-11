@@ -198,6 +198,12 @@ class TestGS(IsolatedAsyncioTestCase):
         )
         assert len(papers) > 20
 
+    async def test_no_link_doesnt_crash_us(self) -> None:
+        await paperscraper.a_gsearch_papers(
+            "OAG-BERT: Pre-train Heterogeneous Entity-augmented Academic Language Models",
+            year="2021",
+        )
+
 
 class Test1(IsolatedAsyncioTestCase):
     async def test_arxiv_to_pdf(self):

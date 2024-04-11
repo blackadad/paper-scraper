@@ -453,7 +453,7 @@ class Test15(IsolatedAsyncioTestCase):
 
 
 class Test16(IsolatedAsyncioTestCase):
-    def test_format_bibtex(self):
+    def test_format_bibtex(self) -> None:
         bibtex = """
             @['JournalArticle']{Salomón-Ferrer2013RoutineMM,
                 author = {Romelia Salomón-Ferrer and A. Götz and D. Poole and S. Le Grand and R. Walker},
@@ -521,3 +521,20 @@ class Test16(IsolatedAsyncioTestCase):
         """
 
         parse_string(clean_upbibtex(bibtex5), "bibtex")
+
+        # Edge case where there is no title or author
+        bibtex6 = """
+        @article{2023,
+            volume = {383},
+            ISSN = {0378-4274},
+            url = {http://dx.doi.org/10.1016/j.toxlet.2023.05.004},
+            DOI = {10.1016/j.toxlet.2023.05.004},
+            journal = {Toxicology Letters},
+            publisher = {Elsevier BV},
+            year = {2023},
+            month = jul,
+            pages = {33–42}
+        }
+        """  # noqa: RUF001
+        key: str = bibtex6.split("{")[1].split(",")[0]
+        format_bibtex(bibtex6, key, clean=False)

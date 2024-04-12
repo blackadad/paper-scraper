@@ -85,16 +85,16 @@ class TestCrossref(IsolatedAsyncioTestCase):
     async def test_hard_reconciles(self):
         test_parameters: list[dict] = [
             {
-                "title": "High-throughput screening of human genetic variants by pooled prime editing.", # noqa: E501
+                "title": "High-throughput screening of human genetic variants by pooled prime editing.",  # noqa: E501
                 "doi": "10.1101/2024.04.01.587366",
             },
             {
-                "title": "High-throughput screening of human genetic variants by pooled prime editing.", # noqa: E501
+                "title": "High-throughput screening of human genetic variants by pooled prime editing.",  # noqa: E501
                 "authors": ["garbage", "authors", "that"],
                 "doi": "10.1101/2024.04.01.587366",
             },
             {
-                "title": "High throughput screening of human genetic variants by pooled prime editing", # noqa: E501
+                "title": "High throughput screening of human genetic variants by pooled prime editing",  # noqa: E501
                 "doi": "10.1101/2024.04.01.587366",
             },
         ]

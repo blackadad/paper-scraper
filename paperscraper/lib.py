@@ -347,7 +347,7 @@ async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, An
     }
 
 
-async def preprocess_google_scholar_metadata(
+async def preprocess_google_scholar_metadata(  # noqa: C901
     paper: dict[str, Any], session: ClientSession
 ) -> dict[str, Any]:
     # get years

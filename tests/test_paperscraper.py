@@ -82,6 +82,25 @@ class TestCrossref(IsolatedAsyncioTestCase):
         key = bibtex.split("{")[1].split(",")[0]
         assert format_bibtex(bibtex, key, clean=False)
 
+    async def test_hard_reconciles(self):
+        test_parameters: list[dict] = [
+            {
+                "title": "High-throughput screening of human genetic variants by pooled prime editing.", # noqa: E501
+                "doi": "10.1101/2024.04.01.587366",
+            },
+            {
+                "title": "High-throughput screening of human genetic variants by pooled prime editing.", # noqa: E501
+                "authors": ["garbage", "authors", "that"],
+                "doi": "10.1101/2024.04.01.587366",
+            },
+            {
+                "title": "High throughput screening of human genetic variants by pooled prime editing", # noqa: E501
+                "doi": "10.1101/2024.04.01.587366",
+            },
+        ]
+        session = ThrottledClientSession(headers=get_header(), rate_limit=15 / 60)
+        for test in test_parameters:
+            assert await reconcile_doi(test["title"], [], session) == test["doi"]
 
 def test_find_doi() -> None:
     test_parameters = [

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
 import os
@@ -101,6 +103,7 @@ class TestCrossref(IsolatedAsyncioTestCase):
         session = ThrottledClientSession(headers=get_header(), rate_limit=15 / 60)
         for test in test_parameters:
             assert await reconcile_doi(test["title"], [], session) == test["doi"]
+
 
 def test_find_doi() -> None:
     test_parameters = [

@@ -349,7 +349,7 @@ async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, An
 
 async def preprocess_google_scholar_metadata(
     paper: dict[str, Any], session: ClientSession
-) -> dict[str, Any]:
+) -> dict[str, Any]:  # noqa: C901
     # get years
     match = year_extract_pattern.findall(paper["publication_info"]["summary"])
     year = match[0] if len(match) > 0 else None
@@ -361,7 +361,7 @@ async def preprocess_google_scholar_metadata(
             if "file_format" in res and res["file_format"] == "PDF":
                 paper["openAccessPdf"] = {"url": res["link"]}
                 break
-            elif "link" in res:
+            if "link" in res:
                 paper["openAccessPdf"] = {"url": res["link"]}
                 # do not break, we want to try to get a pdf link
 

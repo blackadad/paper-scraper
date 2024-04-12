@@ -383,7 +383,10 @@ async def preprocess_google_scholar_metadata(
     # set citation count
     paper["citationCount"] = (
         int(paper["inline_links"]["cited_by"]["total"])
-        if ("cited_by" in paper["inline_links"] and paper["inline_links"]["cited_by"]["total"])
+        if (
+            "cited_by" in paper["inline_links"]
+            and paper["inline_links"]["cited_by"]["total"]
+        )
         else 0  # best we can do
     )
 

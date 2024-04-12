@@ -349,7 +349,7 @@ async def parse_semantic_scholar_metadata(paper: dict[str, Any]) -> dict[str, An
 
 async def preprocess_google_scholar_metadata(
     paper: dict[str, Any], session: ClientSession
-) -> dict[str, Any]:  # noqa: C901
+) -> dict[str, Any]:
     # get years
     match = year_extract_pattern.findall(paper["publication_info"]["summary"])
     year = match[0] if len(match) > 0 else None

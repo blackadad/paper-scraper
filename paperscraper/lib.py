@@ -360,6 +360,14 @@ async def preprocess_google_scholar_metadata(
         for res in paper["resources"]:
             if "file_format" in res and res["file_format"] == "PDF":
                 paper["openAccessPdf"] = {"url": res["link"]}
+                break
+            elif "link" in res:
+                paper["openAccessPdf"] = {"url": res["link"]}
+                # do not break, we want to try to get a pdf link
+
+    # did we get a link? If not, fallback onto given link
+    if "openAccessPdf" not in paper:
+        paper["openAccessPdf"] = {"url": paper["link"]}
 
     # set external ids
     paper["externalIds"] = {}

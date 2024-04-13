@@ -366,7 +366,7 @@ async def preprocess_google_scholar_metadata(  # noqa: C901
                 # do not break, we want to try to get a pdf link
 
     # did we get a link? If not, fallback onto given link
-    if "openAccessPdf" not in paper:
+    if "openAccessPdf" not in paper and "link" in paper:
         paper["openAccessPdf"] = {"url": paper["link"]}
 
     # set external ids

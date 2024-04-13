@@ -114,7 +114,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
             if response.status not in self.SERVICE_LIMIT_REACHED_STATUS_CODES:
                 break
             if retry_num < self._retry_count:
-                exp_backoff_with_jitter = 0.1 * (2**retry_num + random.random())
+                exp_backoff_with_jitter = (2**retry_num + random.random())
                 logger.warning(
                     f"Hit a service limit per status {response.status} with message"
                     f" {await response.text()}, sleeping"

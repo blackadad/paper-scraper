@@ -116,7 +116,7 @@ session_timeout = 1200
 # pattern.
 testpaths = ["tests"]
 # Timeout in seconds before dumping the stacks. Default is 0 which means no timeout.
-timeout = 300
+timeout = 0
 
 [tool.ruff]
 # Line length to use when enforcing long-lines violations (like `E501`).

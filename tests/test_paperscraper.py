@@ -199,9 +199,12 @@ class Test0(IsolatedAsyncioTestCase):
 
     async def test_high_limit(self) -> None:
         papers = await paperscraper.a_search_papers(
-            "molecular dynamics", search_type="google", 
-            year="2019-2023", limit=5, _limit=2
-        )
+            "molecular dynamics",
+            search_type="google",
+            year="2019-2023",
+            limit=5,
+            _limit=2,
+         )
         assert len(papers) >= 5
 
 

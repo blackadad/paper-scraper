@@ -523,6 +523,7 @@ class RateLimits(float, Enum):
 
     SEMANTIC_SCHOLAR = 90.0
     GOOGLE_SCHOLAR = 30.0
+    # SEE: https://www.crossref.org/documentation/metadata-plus/#00343
     CROSSREF = 30.0  # noqa: PIE796
     SCRAPER = 30 / 60
     FALLBACK_SLOW = 15 / 60
@@ -598,6 +599,9 @@ class SematicScholarSearchType(IntEnum):
         raise NotImplementedError
 
 
+GOOGLE_SEARCH_PAGE_SIZE = 20
+
+
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     query: str,
     limit: int = 10,
@@ -666,7 +670,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             "q": query,
             "api_key": os.environ["SERPAPI_API_KEY"],
             "engine": "google_scholar",
-            "num": 20,
+            "num": GOOGLE_SEARCH_PAGE_SIZE,
             "start": _offset,
             # TODO - add offset and limit here  # noqa: TD004
         }
@@ -858,7 +862,8 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 pdir=pdir,
                 _paths=paths,  # type: ignore[arg-type]
                 _limit=_limit,
-                _offset=_offset + (20 if search_type == "google" else _limit),
+                _offset=_offset
+                + (GOOGLE_SEARCH_PAGE_SIZE if search_type == "google" else _limit),
                 logger=logger,
                 year=year,
                 verbose=verbose,
@@ -878,7 +883,7 @@ async def a_gsearch_papers(  # noqa: C901
     pdir: str | os.PathLike = os.curdir,
     _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
     _offset: int = 0,
-    _limit: int = 20,
+    _limit: int = GOOGLE_SEARCH_PAGE_SIZE,
     logger: logging.Logger | None = None,
     year: str | None = None,
     verbose: bool = False,
@@ -928,13 +933,10 @@ async def a_gsearch_papers(  # noqa: C901
         {str(k): v for k, v in _paths.items()} if _paths is not None else {}
     )
     scraper = scraper or default_scraper()
-    ssheader = get_header()
-    # add key to headers
 
-    # Shared rate limits here between gs/crossref
     async with ThrottledClientSession(
-        headers=ssheader,
-        rate_limit=RateLimits.GOOGLE_SCHOLAR.value,
+        headers=get_header(),
+        rate_limit=RateLimits.GOOGLE_SCHOLAR.value,  # Share rate limits between gs/crossref
     ) as session:
         async with session.get(
             url=endpoint,

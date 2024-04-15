@@ -9,6 +9,7 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
 
 import aiohttp
+import pytest
 from pybtex.database import parse_string
 
 import paperscraper
@@ -278,18 +279,30 @@ class Test1(IsolatedAsyncioTestCase):
             {"openAccessPdf": None}, MagicMock(), MagicMock()
         )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            await openaccess_scraper(
-                {
-                    "openAccessPdf": {
-                        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6506413/"
-                    }
-                },
-                os.path.join(tmpdir, "test.pdf"),
-                ThrottledClientSession(
-                    rate_limit=RateLimits.SCRAPER.value, headers=get_header()
-                ),
-            )
+        async with ThrottledClientSession(
+            rate_limit=RateLimits.SCRAPER.value, headers=get_header()
+        ) as session:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                await openaccess_scraper(
+                    {
+                        "openAccessPdf": {
+                            "url": "https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.0c00513"
+                        }
+                    },
+                    os.path.join(tmpdir, "test1.pdf"),
+                    session,
+                )
+                with pytest.raises(RuntimeError, match="No PDF link"):
+                    # Confirm we can regex parse without a malformed URL error
+                    await openaccess_scraper(
+                        {
+                            "openAccessPdf": {
+                                "url": "https://www.annualreviews.org/doi/full/10.1146/annurev-physchem-042018-052331"
+                            }
+                        },
+                        os.path.join(tmpdir, "test2.pdf"),
+                        session,
+                    )
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"

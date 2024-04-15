@@ -93,7 +93,10 @@ class Scraper:
                         return True
                 except Exception:
                     if logger is not None:
-                        logger.exception(f"\tScraper {scraper.name} failed.")
+                        logger.exception(
+                            f"\tScraper {scraper.name} failed on paper titled"
+                            f" {paper.get('title')!r}."
+                        )
                 scrape_result[scraper.name] = "failed"
             if self.callback is not None:
                 await self.callback(paper["title"], scrape_result)

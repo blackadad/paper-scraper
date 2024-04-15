@@ -146,12 +146,12 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
             return pdf_link.group(1)
         # maybe epdf
         # should have pdf somewhere (could not be at end)
-        epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
+        epdf_link = re.search(r'href="(\S+\.epdf)"', html_text)
         if epdf_link:
             return epdf_link.group(1).replace("epdf", "pdf")
 
         # obvious thing
-        pdf_link = re.search(r'href="(.*pdf)"', html_text)
+        pdf_link = re.search(r'href="(\S+\.pdf)"', html_text)
         if pdf_link:
             return pdf_link.group(1)
 
@@ -190,7 +190,7 @@ async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:
                 f"Failed to download PubMed Central ID {pmc_id} from URL {url}."
             ) from exc
         html_text = await r.text()
-        pdf_link = re.search(r'href="(.*\.pdf)"', html_text)
+        pdf_link = re.search(r'href="(\S+\.pdf)"', html_text)
         if pdf_link is None:
             raise RuntimeError(
                 f"No PDF link matched for PubMed Central ID {pmc_id} from URL {url}."

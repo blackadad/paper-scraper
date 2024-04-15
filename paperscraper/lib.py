@@ -523,6 +523,7 @@ class RateLimits(float, Enum):
 
     SEMANTIC_SCHOLAR = 90.0
     GOOGLE_SCHOLAR = 30.0
+    # SEE: https://www.crossref.org/documentation/metadata-plus/#00343
     CROSSREF = 30.0  # noqa: PIE796
     SCRAPER = 30 / 60
     FALLBACK_SLOW = 15 / 60

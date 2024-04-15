@@ -932,13 +932,10 @@ async def a_gsearch_papers(  # noqa: C901
         {str(k): v for k, v in _paths.items()} if _paths is not None else {}
     )
     scraper = scraper or default_scraper()
-    ssheader = get_header()
-    # add key to headers
 
-    # Shared rate limits here between gs/crossref
     async with ThrottledClientSession(
-        headers=ssheader,
-        rate_limit=RateLimits.GOOGLE_SCHOLAR.value,
+        headers=get_header(),
+        rate_limit=RateLimits.GOOGLE_SCHOLAR.value,  # Share rate limits between gs/crossref
     ) as session:
         async with session.get(
             url=endpoint,

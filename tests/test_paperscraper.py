@@ -14,6 +14,7 @@ import paperscraper
 from paperscraper.exceptions import CitationConversionError, DOINotFoundError
 from paperscraper.headers import get_header
 from paperscraper.lib import (
+    GOOGLE_SEARCH_PAGE_SIZE,
     RateLimits,
     clean_upbibtex,
     doi_to_bibtex,
@@ -196,10 +197,14 @@ class Test0(IsolatedAsyncioTestCase):
                 assert len(papers) >= 3
 
     async def test_high_limit(self) -> None:
+        """Confirm we can pull in more than two pages of Google search results."""
         papers = await paperscraper.a_search_papers(
-            "molecular dynamics", search_type="google", year="2019-2023", limit=25
+            "molecular dynamics",
+            search_type="google",
+            year="2019-2023",
+            limit=int(2.1 * GOOGLE_SEARCH_PAGE_SIZE),
         )
-        assert len(papers) > 20
+        assert len(papers) > GOOGLE_SEARCH_PAGE_SIZE
 
 
 class TestGS(IsolatedAsyncioTestCase):

@@ -9,7 +9,6 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
 
 import aiohttp
-import pytest
 from pybtex.database import parse_string
 
 import paperscraper
@@ -296,7 +295,7 @@ class Test1(IsolatedAsyncioTestCase):
                     os.path.join(tmpdir, "test1.pdf"),
                     session,
                 )
-                with pytest.raises(RuntimeError, match="No PDF link"):
+                try:
                     # Confirm we can regex parse without a malformed URL error
                     await openaccess_scraper(
                         {
@@ -307,6 +306,10 @@ class Test1(IsolatedAsyncioTestCase):
                         os.path.join(tmpdir, "test2.pdf"),
                         session,
                     )
+                except RuntimeError as exc:
+                    assert "No PDF link" in str(exc)  # noqa: PT017
+                else:
+                    raise AssertionError("Expected to fail with a RuntimeError")
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"

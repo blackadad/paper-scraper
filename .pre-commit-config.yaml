@@ -18,11 +18,11 @@ repos:
       - id: trailing-whitespace
         exclude: .gitignore
   - repo: https://github.com/psf/black-pre-commit-mirror
-    rev: 24.3.0
+    rev: 24.4.0
     hooks:
     - id: black-jupyter
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.6
+    rev: v0.3.7
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]

@@ -18,7 +18,7 @@ from .exceptions import CitationConversionError, DOINotFoundError
 from .headers import get_header
 from .log_formatter import CustomFormatter
 from .scraper import Scraper
-from .utils import ThrottledClientSession, encode_id, find_doi, get_hostname
+from .utils import ThrottledClientSession, encode_id, find_doi, get_scheme_hostname
 
 year_extract_pattern = re.compile(r"\b\d{4}\b")
 
@@ -133,48 +133,51 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
         # try to find a pdf link
         html_text = await r.text()
 
-        # I know this looks weird
-        # I just need to try stuff and be able
-        # to break out of flow if I find a pdf
-        def get_pdf():
-            # try for chemrxiv special tag
-            pdf_link = re.search(
-                r'content="(https://chemrxiv.org/engage/api-gateway/chemrxiv/assets.*\.pdf)"',
-                html_text,
-            )
-            if pdf_link:
-                return pdf_link.group(1)
-            # maybe epdf
-            # should have pdf somewhere (could not be at end)
-            epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
-            if epdf_link:
-                return epdf_link.group(1).replace("epdf", "pdf")
+    # I know this looks weird
+    # I just need to try stuff and be able
+    # to break out of flow if I find a pdf
+    def get_pdf():
+        # try for chemrxiv special tag
+        pdf_link = re.search(
+            r'content="(https://chemrxiv.org/engage/api-gateway/chemrxiv/assets.*\.pdf)"',
+            html_text,
+        )
+        if pdf_link:
+            return pdf_link.group(1)
+        # maybe epdf
+        # should have pdf somewhere (could not be at end)
+        epdf_link = re.search(r'href="(.*\.epdf)"', html_text)
+        if epdf_link:
+            return epdf_link.group(1).replace("epdf", "pdf")
 
-            # obvious thing
-            pdf_link = re.search(r'href="(.*pdf.*)"', html_text)
-            if pdf_link:
-                return pdf_link.group(1)
+        # obvious thing
+        pdf_link = re.search(r'href="(.*pdf)"', html_text)
+        if pdf_link:
+            return pdf_link.group(1)
 
-            # if we got here, we didn't find a pdf
-            raise RuntimeError(f"No PDF link found for {url}")
+        # if we got here, we didn't find a pdf
+        raise RuntimeError(f"No PDF link found for {url}.")
 
-        pdf_link = get_pdf()
-        # check if the link is relative
-        if pdf_link.startswith("/"):
-            pdf_link = f"{get_hostname(url)}{pdf_link}"
+    pdf_link = get_pdf()
+    # check if the link is relative
+    if pdf_link.startswith("/"):
+        pdf_link = get_scheme_hostname(url) + pdf_link
+
     try:
         async with session.get(pdf_link, allow_redirects=True) as r:
-            if not r.ok:
+            try:
+                r.raise_for_status()
+            except ClientResponseError as exc:
                 raise RuntimeError(
-                    f"Unable to download {pdf_link}, status code {r.status}"
-                )
+                    f"Failed to download PDF from URL {pdf_link!r}."
+                ) from exc
             if "pdf" in r.headers["Content-Type"]:
                 with open(path, "wb") as f:  # noqa: ASYNC101
                     f.write(await r.read())
                 return
-            raise RuntimeError(f"No PDF found from {pdf_link}")
+            raise RuntimeError(f"No PDF found from URL {pdf_link!r}.")
     except (TypeError, InvalidURL) as exc:
-        raise RuntimeError(f"Malformed URL {pdf_link} -- {url}") from exc
+        raise RuntimeError(f"Malformed URL {pdf_link!r} from {url}.") from exc
 
 
 async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:

@@ -207,7 +207,7 @@ class Test0(IsolatedAsyncioTestCase):
         assert len(papers) > GOOGLE_SEARCH_PAGE_SIZE
 
 
-class TestGS(IsolatedAsyncioTestCase):
+class TestGSearch(IsolatedAsyncioTestCase):
     async def test_gsearch(self):
         query = "molecular dynamics"
         papers = await paperscraper.a_gsearch_papers(query, year="2019-2023", limit=3)
@@ -223,11 +223,11 @@ class TestGS(IsolatedAsyncioTestCase):
             assert paper["citationCount"]
             assert paper["title"]
 
-    async def test_gsearch_high_limit(self) -> None:
+    async def test_multiple_batches(self) -> None:
         papers = await paperscraper.a_gsearch_papers(
-            "molecular dynamics", year="2019-2023", limit=45
+            "molecular dynamics", year="2019-2023", limit=5, _limit=2
         )
-        assert len(papers) > 20
+        assert len(papers) >= 5
 
     async def test_no_link_doesnt_crash_us(self) -> None:
         await paperscraper.a_gsearch_papers(

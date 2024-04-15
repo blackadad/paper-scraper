@@ -121,11 +121,10 @@ async def xiv_to_pdf(doi, path, domain: str, session: ClientSession) -> None:
             return
 
 
-async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
+async def link_to_pdf(url, path, session: ClientSession) -> None:
     # download
     async with session.get(url, allow_redirects=True) as r:
-        if not r.ok:
-            raise RuntimeError(f"Unable to download {url}, status code {r.status}")
+        r.raise_for_status()
         if "pdf" in r.headers["Content-Type"]:
             with open(path, "wb") as f:  # noqa: ASYNC101
                 f.write(await r.read())
@@ -165,12 +164,7 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
 
     try:
         async with session.get(pdf_link, allow_redirects=True) as r:
-            try:
-                r.raise_for_status()
-            except ClientResponseError as exc:
-                raise RuntimeError(
-                    f"Failed to download PDF from URL {pdf_link!r}."
-                ) from exc
+            r.raise_for_status()
             if "pdf" in r.headers["Content-Type"]:
                 with open(path, "wb") as f:  # noqa: ASYNC101
                     f.write(await r.read())

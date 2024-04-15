@@ -599,7 +599,9 @@ class SematicScholarSearchType(IntEnum):
         raise NotImplementedError
 
 
-GOOGLE_SEARCH_PAGE_SIZE = 20
+# The fact that 20 is actually the max value was not in the SERP API docs as
+# of 4/15/2024, but was determined by contacting SERP support
+GOOGLE_SEARCH_MAX_PAGE_SIZE = 20
 
 
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
@@ -670,7 +672,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             "q": query,
             "api_key": os.environ["SERPAPI_API_KEY"],
             "engine": "google_scholar",
-            "num": GOOGLE_SEARCH_PAGE_SIZE,
+            "num": GOOGLE_SEARCH_MAX_PAGE_SIZE,
             "start": _offset,
             # TODO - add offset and limit here  # noqa: TD004
         }
@@ -863,7 +865,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 _paths=paths,  # type: ignore[arg-type]
                 _limit=_limit,
                 _offset=_offset
-                + (GOOGLE_SEARCH_PAGE_SIZE if search_type == "google" else _limit),
+                + (GOOGLE_SEARCH_MAX_PAGE_SIZE if search_type == "google" else _limit),
                 logger=logger,
                 year=year,
                 verbose=verbose,
@@ -883,7 +885,7 @@ async def a_gsearch_papers(  # noqa: C901
     pdir: str | os.PathLike = os.curdir,
     _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
     _offset: int = 0,
-    _limit: int = GOOGLE_SEARCH_PAGE_SIZE,
+    _limit: int = GOOGLE_SEARCH_MAX_PAGE_SIZE,
     logger: logging.Logger | None = None,
     year: str | None = None,
     verbose: bool = False,

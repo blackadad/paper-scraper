@@ -121,11 +121,10 @@ async def xiv_to_pdf(doi, path, domain: str, session: ClientSession) -> None:
             return
 
 
-async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
+async def link_to_pdf(url, path, session: ClientSession) -> None:
     # download
     async with session.get(url, allow_redirects=True) as r:
-        if not r.ok:
-            raise RuntimeError(f"Unable to download {url}, status code {r.status}")
+        r.raise_for_status()
         if "pdf" in r.headers["Content-Type"]:
             with open(path, "wb") as f:  # noqa: ASYNC101
                 f.write(await r.read())
@@ -165,12 +164,7 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:  # noqa: C901
 
     try:
         async with session.get(pdf_link, allow_redirects=True) as r:
-            try:
-                r.raise_for_status()
-            except ClientResponseError as exc:
-                raise RuntimeError(
-                    f"Failed to download PDF from URL {pdf_link!r}."
-                ) from exc
+            r.raise_for_status()
             if "pdf" in r.headers["Content-Type"]:
                 with open(path, "wb") as f:  # noqa: ASYNC101
                     f.write(await r.read())
@@ -599,7 +593,9 @@ class SematicScholarSearchType(IntEnum):
         raise NotImplementedError
 
 
-GOOGLE_SEARCH_PAGE_SIZE = 20
+# The fact that 20 is actually the max value was not in the SERP API docs as
+# of 4/15/2024, but was determined by contacting SERP support
+GOOGLE_SEARCH_MAX_PAGE_SIZE = 20
 
 
 async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
@@ -670,7 +666,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             "q": query,
             "api_key": os.environ["SERPAPI_API_KEY"],
             "engine": "google_scholar",
-            "num": GOOGLE_SEARCH_PAGE_SIZE,
+            "num": GOOGLE_SEARCH_MAX_PAGE_SIZE,
             "start": _offset,
             # TODO - add offset and limit here  # noqa: TD004
         }
@@ -863,7 +859,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                 _paths=paths,  # type: ignore[arg-type]
                 _limit=_limit,
                 _offset=_offset
-                + (GOOGLE_SEARCH_PAGE_SIZE if search_type == "google" else _limit),
+                + (GOOGLE_SEARCH_MAX_PAGE_SIZE if search_type == "google" else _limit),
                 logger=logger,
                 year=year,
                 verbose=verbose,
@@ -883,7 +879,7 @@ async def a_gsearch_papers(  # noqa: C901
     pdir: str | os.PathLike = os.curdir,
     _paths: dict[str | os.PathLike, dict[str, Any]] | None = None,
     _offset: int = 0,
-    _limit: int = GOOGLE_SEARCH_PAGE_SIZE,
+    _limit: int = GOOGLE_SEARCH_MAX_PAGE_SIZE,
     logger: logging.Logger | None = None,
     year: str | None = None,
     verbose: bool = False,

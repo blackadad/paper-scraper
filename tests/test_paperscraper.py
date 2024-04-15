@@ -9,14 +9,13 @@ from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
 
 import aiohttp
-import pytest
 from pybtex.database import parse_string
 
 import paperscraper
 from paperscraper.exceptions import CitationConversionError, DOINotFoundError
 from paperscraper.headers import get_header
 from paperscraper.lib import (
-    GOOGLE_SEARCH_PAGE_SIZE,
+    GOOGLE_SEARCH_MAX_PAGE_SIZE,
     RateLimits,
     clean_upbibtex,
     doi_to_bibtex,
@@ -203,9 +202,9 @@ class Test0(IsolatedAsyncioTestCase):
             "molecular dynamics",
             search_type="google",
             year="2019-2023",
-            limit=int(2.1 * GOOGLE_SEARCH_PAGE_SIZE),
+            limit=int(2.1 * GOOGLE_SEARCH_MAX_PAGE_SIZE),
         )
-        assert len(papers) > GOOGLE_SEARCH_PAGE_SIZE
+        assert len(papers) > GOOGLE_SEARCH_MAX_PAGE_SIZE
 
 
 class TestGSearch(IsolatedAsyncioTestCase):
@@ -296,7 +295,7 @@ class Test1(IsolatedAsyncioTestCase):
                     os.path.join(tmpdir, "test1.pdf"),
                     session,
                 )
-                with pytest.raises(RuntimeError, match="No PDF link"):
+                try:
                     # Confirm we can regex parse without a malformed URL error
                     await openaccess_scraper(
                         {
@@ -307,6 +306,10 @@ class Test1(IsolatedAsyncioTestCase):
                         os.path.join(tmpdir, "test2.pdf"),
                         session,
                     )
+                except RuntimeError as exc:
+                    assert "No PDF link" in str(exc)  # noqa: PT017
+                else:
+                    raise AssertionError("Expected to fail with a RuntimeError")
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"

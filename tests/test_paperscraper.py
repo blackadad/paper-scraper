@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import tempfile
 import time
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import MagicMock
@@ -276,6 +277,19 @@ class Test1(IsolatedAsyncioTestCase):
         assert not await openaccess_scraper(
             {"openAccessPdf": None}, MagicMock(), MagicMock()
         )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            await openaccess_scraper(
+                {
+                    "openAccessPdf": {
+                        "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6506413/"
+                    }
+                },
+                os.path.join(tmpdir, "test.pdf"),
+                ThrottledClientSession(
+                    rate_limit=RateLimits.SCRAPER.value, headers=get_header()
+                ),
+            )
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"

@@ -173,6 +173,13 @@ def encode_id(value: str | bytes | UUID, maxsize: int | None = 16) -> str:
     return hashlib.md5(value).hexdigest()[:maxsize]  # noqa: S324
 
 
-def get_hostname(url):
+def get_scheme_hostname(url: str) -> str:
     parsed_url = urllib.parse.urlparse(url)
-    return parsed_url.netloc
+    return urllib.parse.ParseResult(
+        scheme=parsed_url.scheme,
+        netloc=parsed_url.netloc,
+        path="",
+        params="",
+        query="",
+        fragment="",
+    ).geturl()

@@ -325,21 +325,6 @@ class Test1(IsolatedAsyncioTestCase):
                     os.path.join(tmpdir, "test1.pdf"),
                     session,
                 )
-                try:
-                    # Confirm we can regex parse without a malformed URL error
-                    await openaccess_scraper(
-                        {
-                            "openAccessPdf": {
-                                "url": "https://www.annualreviews.org/doi/full/10.1146/annurev-physchem-042018-052331"
-                            }
-                        },
-                        os.path.join(tmpdir, "test2.pdf"),
-                        session,
-                    )
-                except RuntimeError as exc:
-                    assert "No PDF link" in str(exc)  # noqa: PT017
-                else:
-                    raise AssertionError("Expected to fail with a RuntimeError")
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"

@@ -14,11 +14,17 @@ from typing import Any
 
 from aiohttp import ClientResponse, ClientResponseError, ClientSession, InvalidURL
 
-from .exceptions import CitationConversionError, DOINotFoundError
+from .exceptions import CitationConversionError, DOINotFoundError, NoPDFLinkError
 from .headers import get_header
 from .log_formatter import CustomFormatter
 from .scraper import Scraper
-from .utils import ThrottledClientSession, encode_id, find_doi, get_scheme_hostname
+from .utils import (
+    ThrottledClientSession,
+    encode_id,
+    find_doi,
+    get_scheme_hostname,
+    search_pdf_link,
+)
 
 year_extract_pattern = re.compile(r"\b\d{4}\b")
 
@@ -135,7 +141,7 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:
     # I know this looks weird
     # I just need to try stuff and be able
     # to break out of flow if I find a pdf
-    def get_pdf():
+    def get_pdf() -> str:
         # try for chemrxiv special tag
         pdf_link = re.search(
             r'content="(https://chemrxiv.org/engage/api-gateway/chemrxiv/assets.*\.pdf)"',
@@ -143,21 +149,15 @@ async def link_to_pdf(url, path, session: ClientSession) -> None:
         )
         if pdf_link:
             return pdf_link.group(1)
-        # maybe epdf
-        # should have pdf somewhere (could not be at end)
-        epdf_link = re.search(r'href="(\S+\.epdf)"', html_text)
-        if epdf_link:
-            return epdf_link.group(1).replace("epdf", "pdf")
+        try:
+            return search_pdf_link(html_text, epdf=True)
+        except NoPDFLinkError:
+            return search_pdf_link(html_text)
 
-        # obvious thing
-        pdf_link = re.search(r'href="(\S+\.pdf)"', html_text)
-        if pdf_link:
-            return pdf_link.group(1)
-
-        # if we got here, we didn't find a pdf
-        raise RuntimeError(f"No PDF link found for {url}.")
-
-    pdf_link = get_pdf()
+    try:
+        pdf_link = get_pdf()
+    except NoPDFLinkError as exc:
+        raise RuntimeError(f"No PDF link found for {url}.") from exc
     # check if the link is relative
     if pdf_link.startswith("/"):
         pdf_link = get_scheme_hostname(url) + pdf_link
@@ -183,13 +183,13 @@ async def find_pmc_pdf_link(pmc_id, session: ClientSession) -> str:
             raise RuntimeError(
                 f"Failed to download PubMed Central ID {pmc_id} from URL {url}."
             ) from exc
-        html_text = await r.text()
-        pdf_link = re.search(r'href="(\S+\.pdf)"', html_text)
-        if pdf_link is None:
+        try:
+            pdf_link = search_pdf_link(text=await r.text())
+        except NoPDFLinkError as exc:
             raise RuntimeError(
                 f"No PDF link matched for PubMed Central ID {pmc_id} from URL {url}."
-            )
-        return f"https://www.ncbi.nlm.nih.gov{pdf_link.group(1)}"
+            ) from exc
+        return f"https://www.ncbi.nlm.nih.gov{pdf_link}"
 
 
 async def pubmed_to_pdf(pubmed_id, path, session: ClientSession) -> None:

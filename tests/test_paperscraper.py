@@ -362,7 +362,7 @@ class Test1(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
-    async def test_link2_to_pdf_that_can_raise_403(self):
+    async def test_link2_to_pdf_that_can_raise_403(self) -> None:
         link = "https://journals.sagepub.com/doi/pdf/10.1177/1087057113498418"
         path = "test.pdf"
         try:
@@ -372,7 +372,7 @@ class Test1(IsolatedAsyncioTestCase):
                 await paperscraper.link_to_pdf(link, path, session)
             os.remove(path)
 
-        except RuntimeError as e:
+        except (RuntimeError, aiohttp.ClientResponseError) as e:
             assert "403" in str(e)  # noqa: PT017
 
     async def test_link3_to_pdf(self):

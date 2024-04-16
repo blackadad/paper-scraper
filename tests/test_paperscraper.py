@@ -312,19 +312,36 @@ class Test1(IsolatedAsyncioTestCase):
             {"openAccessPdf": None}, MagicMock(), MagicMock()
         )
 
-        async with ThrottledClientSession(
-            rate_limit=RateLimits.SCRAPER.value, headers=get_header()
-        ) as session:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                await openaccess_scraper(
-                    {
-                        "openAccessPdf": {
-                            "url": "https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.0c00513"
-                        }
-                    },
-                    os.path.join(tmpdir, "test1.pdf"),
-                    session,
-                )
+        mock_session = MagicMock()
+        call_index = 0
+
+        @contextlib.asynccontextmanager
+        async def mock_session_get(*_, **__):
+            mock_response = MagicMock(spec_set=aiohttp.ClientResponse)
+            nonlocal call_index
+            call_index += 1
+            if call_index == 1:
+                mock_response.text.side_effect = [
+                    '<a class="suppl-anchor" href="/doi/suppl/10.1021/acs.nanolett.0c00513/suppl_file/nl0c00513_si_001.pdf">'  # noqa: E501
+                ]
+            else:
+                mock_response.headers = {
+                    "Content-Type": "application/pdf;charset=UTF-8"
+                }
+                mock_response.read.side_effect = [b"stub"]
+            yield mock_response
+
+        mock_session.get.side_effect = mock_session_get
+        with tempfile.TemporaryDirectory() as tmpdir:
+            await openaccess_scraper(
+                {
+                    "openAccessPdf": {
+                        "url": "https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.0c00513"
+                    }
+                },
+                os.path.join(tmpdir, "test.pdf"),
+                mock_session,
+            )
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"

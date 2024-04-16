@@ -12,7 +12,11 @@ import aiohttp
 from pybtex.database import parse_string
 
 import paperscraper
-from paperscraper.exceptions import CitationConversionError, DOINotFoundError
+from paperscraper.exceptions import (
+    CitationConversionError,
+    DOINotFoundError,
+    NoPDFLinkError,
+)
 from paperscraper.headers import get_header
 from paperscraper.lib import (
     GOOGLE_SEARCH_MAX_PAGE_SIZE,
@@ -23,7 +27,7 @@ from paperscraper.lib import (
     openaccess_scraper,
     reconcile_doi,
 )
-from paperscraper.utils import ThrottledClientSession, find_doi
+from paperscraper.utils import ThrottledClientSession, find_doi, search_pdf_link
 
 
 class TestThrottledClientSession(IsolatedAsyncioTestCase):
@@ -277,39 +281,67 @@ class Test1(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
+    def test_search_pdf_link(self) -> None:
+        for url, expected in (
+            ('<link rel="schema.DC" href="http://abc.org/DC/elements/1.0/" />', None),
+            (
+                '<a href="/doi/suppl/10.1010/spam.ham.0a0/some_file/abc_001.pdf" class="ext-link">PDF</a>',  # noqa: E501
+                "/doi/suppl/10.1010/spam.ham.0a0/some_file/abc_001.pdf",
+            ),
+            (
+                '<form method="POST" action="/deliver/fulltext/foo/71/1/spam-ham-123-456.pdf?itemId=%2Fcontent%2Fjournals%2F10.1010%2Fabc-def-012000-123&mimeType=pdf&containerItemId=content/journals/applesauce"\ntarget="/content/journals/10.1010/abc-def-012000-123-pdf" \ndata-title',  # noqa: E501
+                None,
+            ),
+            (
+                '<a href="#" class="fa fa-file-pdf-o access-options-icon"\nrole="button"><span class="sr-only">file format pdf download</span></a>',  # noqa: E501
+                None,
+            ),
+        ):
+            if isinstance(expected, str):
+                assert search_pdf_link(url) == expected
+            else:
+                try:
+                    search_pdf_link(url)
+                except NoPDFLinkError:
+                    pass
+                else:
+                    raise AssertionError("Should be unreachable")
+
     async def test_openaccess_scraper(self) -> None:
         assert not await openaccess_scraper(
             {"openAccessPdf": None}, MagicMock(), MagicMock()
         )
 
-        async with ThrottledClientSession(
-            rate_limit=RateLimits.SCRAPER.value, headers=get_header()
-        ) as session:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                await openaccess_scraper(
-                    {
-                        "openAccessPdf": {
-                            "url": "https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.0c00513"
-                        }
-                    },
-                    os.path.join(tmpdir, "test1.pdf"),
-                    session,
-                )
-                try:
-                    # Confirm we can regex parse without a malformed URL error
-                    await openaccess_scraper(
-                        {
-                            "openAccessPdf": {
-                                "url": "https://www.annualreviews.org/doi/full/10.1146/annurev-physchem-042018-052331"
-                            }
-                        },
-                        os.path.join(tmpdir, "test2.pdf"),
-                        session,
-                    )
-                except RuntimeError as exc:
-                    assert "No PDF link" in str(exc)  # noqa: PT017
-                else:
-                    raise AssertionError("Expected to fail with a RuntimeError")
+        mock_session = MagicMock()
+        call_index = 0
+
+        @contextlib.asynccontextmanager
+        async def mock_session_get(*_, **__):
+            mock_response = MagicMock(spec_set=aiohttp.ClientResponse)
+            nonlocal call_index
+            call_index += 1
+            if call_index == 1:
+                mock_response.text.side_effect = [
+                    '<a class="suppl-anchor" href="/doi/suppl/10.1021/acs.nanolett.0c00513/suppl_file/nl0c00513_si_001.pdf">'  # noqa: E501
+                ]
+            else:
+                mock_response.headers = {
+                    "Content-Type": "application/pdf;charset=UTF-8"
+                }
+                mock_response.read.side_effect = [b"stub"]
+            yield mock_response
+
+        mock_session.get.side_effect = mock_session_get
+        with tempfile.TemporaryDirectory() as tmpdir:
+            await openaccess_scraper(
+                {
+                    "openAccessPdf": {
+                        "url": "https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.0c00513"
+                    }
+                },
+                os.path.join(tmpdir, "test.pdf"),
+                mock_session,
+            )
 
     async def test_pubmed_to_pdf(self):
         path = "test.pdf"
@@ -330,7 +362,7 @@ class Test1(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
-    async def test_link2_to_pdf_that_can_raise_403(self):
+    async def test_link2_to_pdf_that_can_raise_403(self) -> None:
         link = "https://journals.sagepub.com/doi/pdf/10.1177/1087057113498418"
         path = "test.pdf"
         try:
@@ -340,7 +372,7 @@ class Test1(IsolatedAsyncioTestCase):
                 await paperscraper.link_to_pdf(link, path, session)
             os.remove(path)
 
-        except RuntimeError as e:
+        except (RuntimeError, aiohttp.ClientResponseError) as e:
             assert "403" in str(e)  # noqa: PT017
 
     async def test_link3_to_pdf(self):

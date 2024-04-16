@@ -12,7 +12,11 @@ import aiohttp
 from pybtex.database import parse_string
 
 import paperscraper
-from paperscraper.exceptions import CitationConversionError, DOINotFoundError
+from paperscraper.exceptions import (
+    CitationConversionError,
+    DOINotFoundError,
+    NoPDFLinkError,
+)
 from paperscraper.headers import get_header
 from paperscraper.lib import (
     GOOGLE_SEARCH_MAX_PAGE_SIZE,
@@ -23,7 +27,7 @@ from paperscraper.lib import (
     openaccess_scraper,
     reconcile_doi,
 )
-from paperscraper.utils import ThrottledClientSession, find_doi
+from paperscraper.utils import ThrottledClientSession, find_doi, search_pdf_link
 
 
 class TestThrottledClientSession(IsolatedAsyncioTestCase):
@@ -276,6 +280,32 @@ class Test1(IsolatedAsyncioTestCase):
             await paperscraper.pmc_to_pdf(pmc_id, path, session)
         assert paperscraper.check_pdf(path)
         os.remove(path)
+
+    def test_search_pdf_link(self) -> None:
+        for url, expected in (
+            ('<link rel="schema.DC" href="http://abc.org/DC/elements/1.0/" />', None),
+            (
+                '<a href="/doi/suppl/10.1010/spam.ham.0a0/some_file/abc_001.pdf" class="ext-link">PDF</a>',  # noqa: E501
+                "/doi/suppl/10.1010/spam.ham.0a0/some_file/abc_001.pdf",
+            ),
+            (
+                '<form method="POST" action="/deliver/fulltext/foo/71/1/spam-ham-123-456.pdf?itemId=%2Fcontent%2Fjournals%2F10.1010%2Fabc-def-012000-123&mimeType=pdf&containerItemId=content/journals/applesauce"\ntarget="/content/journals/10.1010/abc-def-012000-123-pdf" \ndata-title',  # noqa: E501
+                None,
+            ),
+            (
+                '<a href="#" class="fa fa-file-pdf-o access-options-icon"\nrole="button"><span class="sr-only">file format pdf download</span></a>',  # noqa: E501
+                None,
+            ),
+        ):
+            if isinstance(expected, str):
+                assert search_pdf_link(url) == expected
+            else:
+                try:
+                    search_pdf_link(url)
+                except NoPDFLinkError:
+                    pass
+                else:
+                    raise AssertionError("Should be unreachable")
 
     async def test_openaccess_scraper(self) -> None:
         assert not await openaccess_scraper(

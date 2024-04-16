@@ -16,6 +16,8 @@ from uuid import UUID
 import aiohttp
 import fitz
 
+from paperscraper.exceptions import NoPDFLinkError
+
 logger = logging.getLogger(__name__)
 
 
@@ -183,3 +185,15 @@ def get_scheme_hostname(url: str) -> str:
         query="",
         fragment="",
     ).geturl()
+
+
+def search_pdf_link(text: str, epdf: bool = False) -> str:
+    if epdf:
+        epdf_link = re.search(r'href="(\S+\.epdf)"', text)
+        if epdf_link:
+            return epdf_link.group(1).replace("epdf", "pdf")
+    else:
+        pdf_link = re.search(r'href="(\S+\.pdf)"', text)
+        if pdf_link:
+            return pdf_link.group(1)
+    raise NoPDFLinkError("No PDF link found.")

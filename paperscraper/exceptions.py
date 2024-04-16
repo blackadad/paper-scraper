@@ -6,3 +6,7 @@ class DOINotFoundError(Exception):
 
 class CitationConversionError(Exception):
     """Exception to throw when we can't process a citation from a BibTeX."""
+
+
+class NoPDFLinkError(Exception):
+    """Exception to throw when we can't find a PDF link."""

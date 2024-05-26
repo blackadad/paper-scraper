@@ -93,16 +93,25 @@ class TestCrossref(IsolatedAsyncioTestCase):
     async def test_hard_reconciles(self):
         test_parameters: list[dict] = [
             {
-                "title": "High-throughput screening of human genetic variants by pooled prime editing.",  # noqa: E501
+                "title": (
+                    "High-throughput screening of human genetic variants by pooled"
+                    " prime editing."
+                ),
                 "doi": "10.1101/2024.04.01.587366",
             },
             {
-                "title": "High-throughput screening of human genetic variants by pooled prime editing.",  # noqa: E501
+                "title": (
+                    "High-throughput screening of human genetic variants by pooled"
+                    " prime editing."
+                ),
                 "authors": ["garbage", "authors", "that"],
                 "doi": "10.1101/2024.04.01.587366",
             },
             {
-                "title": "High throughput screening of human genetic variants by pooled prime editing",  # noqa: E501
+                "title": (
+                    "High throughput screening of human genetic variants by pooled"
+                    " prime editing"
+                ),
                 "doi": "10.1101/2024.04.01.587366",
             },
         ]
@@ -235,7 +244,8 @@ class TestGSearch(IsolatedAsyncioTestCase):
 
     async def test_no_link_doesnt_crash_us(self) -> None:
         await paperscraper.a_gsearch_papers(
-            "OAG-BERT: Pre-train Heterogeneous Entity-augmented Academic Language Models",
+            "OAG-BERT: Pre-train Heterogeneous Entity-augmented Academic Language"
+            " Models",
             year="2021",
         )
 
@@ -336,7 +346,9 @@ class Test1(IsolatedAsyncioTestCase):
             await openaccess_scraper(
                 {
                     "openAccessPdf": {
-                        "url": "https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.0c00513"
+                        "url": (
+                            "https://pubs.acs.org/doi/abs/10.1021/acs.nanolett.0c00513"
+                        )
                     }
                 },
                 os.path.join(tmpdir, "test.pdf"),
@@ -534,7 +546,8 @@ class Test14(IsolatedAsyncioTestCase):
 class Test15(IsolatedAsyncioTestCase):
     async def test_pdf_link_from_google(self):
         papers = await paperscraper.a_search_papers(
-            "Multiplex Base Editing to Protect from CD33-Directed Therapy: Implications for Immune and Gene Therapy",  # noqa: E501
+            "Multiplex Base Editing to Protect from CD33-Directed Therapy: Implications"
+            " for Immune and Gene Therapy",
             limit=1,
             search_type="google",
         )

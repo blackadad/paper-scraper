@@ -86,7 +86,8 @@ class Scraper:
                         scrape_result[scraper.name] = "success"
                         if logger is not None:
                             logger.debug(
-                                f"\tsucceeded - key: {paper['paperId']} scraper: {scraper.name}"
+                                f"\tsucceeded - key: {paper['paperId']} scraper:"
+                                f" {scraper.name}"
                             )
                         if self.callback is not None:
                             await self.callback(paper["title"], scrape_result)
@@ -147,12 +148,10 @@ class Scraper:
         for i in range(0, len(papers), batch_size):
             aggregated |= {
                 r[0]: r[1]
-                for r in await asyncio.gather(
-                    *(
-                        scrape_parse(paper=p, i=i + j)
-                        for j, p in enumerate(papers[i : i + batch_size])
-                    )
-                )
+                for r in await asyncio.gather(*(
+                    scrape_parse(paper=p, i=i + j)
+                    for j, p in enumerate(papers[i : i + batch_size])
+                ))
                 if r is not False
             }
             if limit is not None and len(aggregated) >= limit:

@@ -130,3 +130,6 @@ dmypy.json
 
 
 *.pdf
+
+# Matching pyproject.toml
+paperscraper/version.py

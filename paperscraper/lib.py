@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Iterable
 from enum import Enum, IntEnum, auto
 from functools import partial
 from pathlib import Path
@@ -20,6 +20,7 @@ from .log_formatter import CustomFormatter
 from .scraper import Scraper
 from .utils import (
     ThrottledClientSession,
+    crossref_headers,
     encode_id,
     find_doi,
     get_scheme_hostname,
@@ -29,7 +30,7 @@ from .utils import (
 year_extract_pattern = re.compile(r"\b\d{4}\b")
 
 
-def clean_upbibtex(bibtex):
+def clean_upbibtex(bibtex: str) -> str:
     # WTF Semantic Scholar?
     mapping = {
         "None": "article",
@@ -84,7 +85,7 @@ def format_bibtex(bibtex, key, clean: bool = True) -> str:
     try:
         entry = style.format_entry(label="1", entry=bd.entries[key])
         return entry.text.render_as("text")
-    except FieldIsMissing:
+    except (FieldIsMissing, UnicodeDecodeError):
         try:
             return bd.entries[key].fields["title"]
         except KeyError as exc:
@@ -306,10 +307,8 @@ async def local_scraper(paper, path) -> bool:  # noqa: ARG001
     return True
 
 
-def default_scraper(
-    callback: Callable[[str, dict[str, str]], Awaitable] | None = None,
-) -> Scraper:
-    scraper = Scraper(callback=callback)
+def default_scraper(**scraper_kwargs) -> Scraper:
+    scraper = Scraper(**scraper_kwargs)
     scraper.register_scraper(local_scraper, priority=12)
     scraper_rate_limit_config: dict[str, Any] = {
         "attach_session": True,
@@ -401,11 +400,37 @@ async def preprocess_google_scholar_metadata(  # noqa: C901
     return paper
 
 
+async def parallel_preprocess_google_scholar_metadata(
+    papers: Iterable[dict[str, Any]],
+    session: ClientSession,
+    logger: logging.Logger | None = None,
+) -> list[dict[str, Any]]:
+    """
+    Preprocess papers in parallel, discarding ones with preprocessing failures.
+
+    NOTE: this function does not preserve the order of papers due to variable
+    preprocessing times.
+    """
+    preprocessed_papers = []
+
+    async def index(paper: dict[str, Any]) -> None:
+        try:
+            preprocessed_papers.append(
+                await preprocess_google_scholar_metadata(paper, session)
+            )
+        except DOINotFoundError:
+            if logger:
+                logger.exception(f"Failed to find a DOI for paper {paper}.")
+
+    await asyncio.gather(*(index(p) for p in papers))
+    return preprocessed_papers
+
+
 async def parse_google_scholar_metadata(
     paper: dict[str, Any], session: ClientSession
 ) -> dict[str, Any]:
     """Parse pre-processed paper metadata from Google Scholar into a richer format."""
-    doi: str | None = paper["externalIds"].get("DOI")
+    doi: str | None = (paper.get("externalIds") or {}).get("DOI")
     citation: str | None = None
     if doi:
         try:
@@ -416,7 +441,7 @@ async def parse_google_scholar_metadata(
             doi = None
         except CitationConversionError:
             citation = None
-    if not doi or not citation:
+    if (not doi or not citation) and "inline_links" in paper:
         # get citation by following link
         # SLOW SLOW Using SerpAPI for this
         async with session.get(
@@ -442,13 +467,23 @@ async def parse_google_scholar_metadata(
                     f"{msg} bibtex link {bibtex_link} for paper {paper}."
                 ) from exc
             bibtex = await r.text()
+            if not bibtex.strip().startswith("@"):
+                raise RuntimeError(
+                    f"Google scholar ip block bibtex link {bibtex_link} for paper"
+                    f" {paper}."
+                )
         key = bibtex.split("{")[1].split(",")[0]
+
+    if not citation:
+        raise RuntimeError(
+            f"Exhausted all options for citation retrieval for {paper!r}"
+        )
     return {
         "citation": citation,
         "key": key,
         "bibtex": bibtex,
         "year": paper["year"],
-        "url": paper["link"],
+        "url": paper.get("link"),
         "paperId": paper["paperId"],
         "doi": paper["externalIds"].get("DOI"),
         "citationCount": paper["citationCount"],
@@ -457,6 +492,14 @@ async def parse_google_scholar_metadata(
 
 
 async def reconcile_doi(title: str, authors: list[str], session: ClientSession) -> str:
+    """
+    Look up a DOI given a title and author list using Crossref.
+
+    Raises:
+        DOINotFoundError: If the reconciliation fails due to (1) Crossref API call had
+            non-'ok' status code, (2) Crossref API response status indicates failure, or
+            (3) Crossref response's entry had a low score.
+    """
     # do not want initials
     authors_query = " ".join([a for a in authors if len(a) > 1])
     mailto = os.environ.get("CROSSREF_MAILTO", "paperscraper@example.org")
@@ -470,9 +513,11 @@ async def reconcile_doi(title: str, authors: list[str], session: ClientSession) 
     }
     if authors_query:
         params["query.author"] = authors_query
-    async with session.get(url, params=params) as r:
-        if not r.ok:
-            raise DOINotFoundError("Could not reconcile DOI " + title)
+    async with session.get(url, params=params, headers=crossref_headers()) as r:
+        try:
+            r.raise_for_status()
+        except ClientResponseError as exc:
+            raise DOINotFoundError("Could not reconcile DOI " + title) from exc
         data = await r.json()
         if data["status"] == "failed":
             raise DOINotFoundError(f"Could not find DOI for {title}")
@@ -487,7 +532,7 @@ async def reconcile_doi(title: str, authors: list[str], session: ClientSession) 
 async def doi_to_bibtex(doi: str, session: ClientSession) -> str:
     # get DOI via crossref
     url = f"https://api.crossref.org/works/{doi}/transform/application/x-bibtex"
-    async with session.get(url) as r:
+    async with session.get(url, headers=crossref_headers()) as r:
         if not r.ok:
             raise DOINotFoundError(
                 f"Per HTTP status code {r.status}, could not resolve DOI {doi}."
@@ -812,7 +857,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
 
                 responses = await asyncio.gather(*(
                     google2s2(t, y, p)
-                    for t, y, p in zip(titles, years, google_pdf_links)
+                    for t, y, p in zip(titles, years, google_pdf_links, strict=True)
                 ))
             data = {"data": [r for r in responses if r is not None]}
             data["total"] = len(data["data"])
@@ -841,11 +886,11 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
         paths.update(
             await scraper.batch_scrape(
                 papers,
-                pdir,
-                parse_semantic_scholar_metadata,
-                batch_size,
-                limit,
-                logger,
+                paper_file_dump_dir=pdir,
+                paper_parser=parse_semantic_scholar_metadata,
+                batch_size=batch_size,
+                limit=limit,
+                logger=logger,
             )
         )
     if search_type in ["default", "google"] and len(paths) < limit and has_more_data:
@@ -896,6 +941,10 @@ async def a_gsearch_papers(  # noqa: C901
             logger.addHandler(ch)
     # SEE: https://serpapi.com/google-scholar-api
     endpoint = "https://serpapi.com/search.json"
+    # adjust _limit if limit is smaller (with margin for scraping errors)
+    # for example, if limit is 3 we would be fine only getting 8 results
+    # but if limit is 50, this will just return normal default _limit (20)
+    _limit = min(_limit, limit + 5)
     params = {
         "q": query,
         "api_key": os.environ["SERPAPI_API_KEY"],
@@ -938,18 +987,14 @@ async def a_gsearch_papers(  # noqa: C901
         ) as response:
             if not response.ok:
                 raise RuntimeError(
-                    f"Error searching papers: {response.status} {response.reason} {await response.text()}"  # noqa: E501
+                    "Error searching papers:"
+                    f" {response.status} {response.reason} {await response.text()}"
                 )
             data = await response.json()
 
         if "organic_results" not in data:
             return paths
         papers = data["organic_results"]
-
-        # we only process papers that have a link
-        papers = await asyncio.gather(
-            *(preprocess_google_scholar_metadata(p, session) for p in papers)
-        )
         total_papers = data["search_information"].get("total_results", 1)
         logger.info(
             f"Found {total_papers} papers, analyzing {_offset} to"
@@ -959,12 +1004,15 @@ async def a_gsearch_papers(  # noqa: C901
         # batch them, since we may reach desired limit before all done
         paths.update(
             await scraper.batch_scrape(
-                papers,
-                pdir,
-                partial(parse_google_scholar_metadata, session=session),
-                batch_size,
-                limit,
-                logger,
+                # we only process papers that have a link and a DOI
+                await parallel_preprocess_google_scholar_metadata(
+                    papers, session, logger
+                ),
+                paper_file_dump_dir=pdir,
+                paper_parser=partial(parse_google_scholar_metadata, session=session),
+                batch_size=batch_size,
+                limit=limit,
+                logger=logger,
             )
         )
     if len(paths) < limit and _offset + _limit < total_papers:

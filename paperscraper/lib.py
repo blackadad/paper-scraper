@@ -221,7 +221,8 @@ async def pmc_to_pdf(
             cause_exc = ValueError("Not a PDF.")
         if cause_exc:
             raise RuntimeError(
-                f"Failed to convert PubMed Central ID {pmc_id} to PDF given URL {pdf_url}."
+                f"Failed to convert PubMed Central ID {pmc_id} to PDF given URL"
+                f" {pdf_url}."
             ) from cause_exc
         with open(path, "wb") as f:  # noqa: ASYNC101
             f.write(await r.read())
@@ -306,7 +307,7 @@ async def local_scraper(paper, path) -> bool:  # noqa: ARG001
 
 
 def default_scraper(
-    callback: Callable[[str, dict[str, str]], Awaitable] | None = None
+    callback: Callable[[str, dict[str, str]], Awaitable] | None = None,
 ) -> Scraper:
     scraper = Scraper(callback=callback)
     scraper.register_scraper(local_scraper, priority=12)
@@ -523,19 +524,17 @@ class RateLimits(float, Enum):
     FALLBACK_SLOW = 15 / 60
 
 
-SEMANTIC_SCHOLAR_API_FIELDS: str = ",".join(
-    [
-        "citationStyles",
-        "externalIds",
-        "url",
-        "openAccessPdf",
-        "year",
-        "isOpenAccess",
-        "influentialCitationCount",
-        "citationCount",
-        "title",
-    ]
-)
+SEMANTIC_SCHOLAR_API_FIELDS: str = ",".join([
+    "citationStyles",
+    "externalIds",
+    "url",
+    "openAccessPdf",
+    "year",
+    "isOpenAccess",
+    "influentialCitationCount",
+    "citationCount",
+    "title",
+])
 SEMANTIC_SCHOLAR_BASE_URL = "https://api.semanticscholar.org"
 
 
@@ -674,7 +673,7 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
     elif search_type == "paper":
         raise NotImplementedError(
             f"Only added 'paper' search type to {SematicScholarSearchType.__name__},"
-            f" but not yet to this function in general."
+            " but not yet to this function in general."
         )
 
     if year is not None and search_type == "default":
@@ -776,9 +775,9 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                     ) as response:
                         if not response.ok:
                             logger.warning(
-                                "Error correlating papers from google to semantic scholar:"
-                                f" status {response.status}, reason {response.reason!r},"
-                                f" text {await response.text()!r}."
+                                "Error correlating papers from google to semantic"
+                                f" scholar: status {response.status}, reason"
+                                f" {response.reason!r}, text {await response.text()!r}."
                             )
                             return None
                         response_data = await response.json()
@@ -811,12 +810,10 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
                         return response_data["data"][0]
                     return None
 
-                responses = await asyncio.gather(
-                    *(
-                        google2s2(t, y, p)
-                        for t, y, p in zip(titles, years, google_pdf_links)
-                    )
-                )
+                responses = await asyncio.gather(*(
+                    google2s2(t, y, p)
+                    for t, y, p in zip(titles, years, google_pdf_links)
+                ))
             data = {"data": [r for r in responses if r is not None]}
             data["total"] = len(data["data"])
         field = "data"
@@ -836,7 +833,8 @@ async def a_search_papers(  # noqa: C901, PLR0912, PLR0915
             papers.sort(key=lambda x: x["influentialCitationCount"], reverse=True)
         if search_type in ["default", "google"]:
             logger.info(
-                f"Found {data['total']} papers, analyzing {_offset} to {_offset + len(papers)}"
+                f"Found {data['total']} papers, analyzing {_offset} to"
+                f" {_offset + len(papers)}"
             )
 
         # batch them, since we may reach desired limit before all done
@@ -954,7 +952,8 @@ async def a_gsearch_papers(  # noqa: C901
         )
         total_papers = data["search_information"].get("total_results", 1)
         logger.info(
-            f"Found {total_papers} papers, analyzing {_offset} to {_offset + len(papers)}"
+            f"Found {total_papers} papers, analyzing {_offset} to"
+            f" {_offset + len(papers)}"
         )
 
         # batch them, since we may reach desired limit before all done

@@ -1,7 +1,6 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-# Pin to 62.6 for support from reading requirements from requirements.txt
-requires = ["setuptools >= 62.6.0"]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
 
 [project]
 authors = [
@@ -25,7 +24,7 @@ dependencies = [
     "pybtex",
 ]
 description = "LLM Chain for answering questions from docs"
-dynamic = ["optional-dependencies"]
+dynamic = ["optional-dependencies", "version"]
 keywords = ["question answering"]
 license = {file = "LICENSE"}
 maintainers = [
@@ -36,13 +35,14 @@ name = "paper-scraper"
 readme = "README.md"
 requires-python = ">=3.8"
 urls = {repository = "https://github.com/blackadad/paper-scraper"}
-version = "1.8.0"
+
+[tool.black]
+enable-unstable-feature = ["hug_parens_with_braces_and_square_brackets"]
+preview = true
 
 [tool.codespell]
 check-filenames = true
 check-hidden = true
-# SEE: https://github.com/codespell-project/codespell/issues/1212#issuecomment-1744768533
-ignore-regex = ".{1024}|.*codespell-ignore.*"
 ignore-words-list = "cros,ser"
 
 [tool.mypy]
@@ -202,6 +202,9 @@ file = ["dev-requirements.txt"]
 
 [tool.setuptools.packages.find]
 include = ["paperscraper*"]
+
+[tool.setuptools_scm]
+version_file = "paperscraper/version.py"
 
 [tool.tomlsort]
 all = true

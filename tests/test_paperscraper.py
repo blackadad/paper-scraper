@@ -5,10 +5,13 @@ import contextlib
 import os
 import tempfile
 import time
+from functools import partial
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
+import pytest
+from aiohttp import ClientResponseError
 from pybtex.database import parse_string
 
 import paperscraper
@@ -25,9 +28,15 @@ from paperscraper.lib import (
     doi_to_bibtex,
     format_bibtex,
     openaccess_scraper,
+    parse_google_scholar_metadata,
     reconcile_doi,
 )
-from paperscraper.utils import ThrottledClientSession, find_doi, search_pdf_link
+from paperscraper.utils import (
+    ThrottledClientSession,
+    encode_id,
+    find_doi,
+    search_pdf_link,
+)
 
 
 class TestThrottledClientSession(IsolatedAsyncioTestCase):
@@ -43,14 +52,12 @@ class TestThrottledClientSession(IsolatedAsyncioTestCase):
         tic = time.perf_counter()
         async with ThrottledClientSession() as session:
             await asyncio.gather(*(get(session) for _ in range(6)))
-        toc = time.perf_counter()
-        assert toc - tic < 1, "Expected no throttling"
+        assert time.perf_counter() - tic < 1, "Expected no throttling"
 
         tic = time.perf_counter()
         async with ThrottledClientSession(rate_limit=2) as session:
             await asyncio.gather(*(get(session) for _ in range(6)))
-        toc = time.perf_counter()
-        assert 2.5 <= toc - tic <= 4.0, "Expected throttling"
+        assert 2.5 <= time.perf_counter() - tic <= 4.0, "Expected throttling"
 
     async def test_can_timeout(self) -> None:
         for rate_limit in (None, 1):
@@ -70,6 +77,28 @@ class TestThrottledClientSession(IsolatedAsyncioTestCase):
                     raise AssertionError(
                         f"Should have timed out with rate limit {rate_limit}."
                     )
+
+    async def test_empty_session(self) -> None:
+        """Check an empty session doesn't crash us."""
+        async with ThrottledClientSession(rate_limit=30.0):
+            pass
+
+    async def test_service_limit(self) -> None:
+        async with ThrottledClientSession(rate_limit=10.0) as session:
+            with (
+                patch.object(
+                    aiohttp.ClientSession,
+                    "_request",
+                    wraps=partial(aiohttp.ClientSession._request, session),
+                ) as mock_request,
+                pytest.raises(RuntimeError, match="service limit"),
+            ):
+                await session.get(
+                    "http://httpbin.org/status/429", headers={"accept": "text/plain"}
+                )
+        assert (
+            mock_request.call_count == 6
+        ), "Expected first attempt followed by 5 retries"
 
 
 class TestCrossref(IsolatedAsyncioTestCase):
@@ -122,7 +151,9 @@ class TestCrossref(IsolatedAsyncioTestCase):
 
 def test_find_doi() -> None:
     test_parameters = [
+        ("", None),
         ("https://www.sciencedirect.com/science/article/pii/S001046551930373X", None),
+        ("https://www.academia.edu/download/110406132/2.pdf", None),
         ("https://doi.org/10.1056/nejmoa2200674", "10.1056/nejmoa2200674"),
         (
             "https://www.biorxiv.org/content/10.1101/2024.01.31.578268v1",
@@ -169,12 +200,25 @@ def test_find_doi() -> None:
             "https://anatomypubs.onlinelibrary.wiley.com/doi/10.1002/(SICI)1097-0177(200006)218:2%3C235::AID-DVDY2%3E3.0.CO;2-G",
             "10.1002/(SICI)1097-0177(200006)218:2<235::AID-DVDY2>3.0.CO;2-G",
         ),
+        ("https://doi.org/10.1093/nar/gkae222", "10.1093/nar/gkae222"),
+        (
+            "https://doi.org/10.1007/s13592-019-00684-x?wt_mc=internal.event.1.sem.articleauthoronlinefirst&utm_source=articleauthoronlinefirst&utm_medium=email&utm_content=aa_en_06082018&articleauthoronlinefirst_20190913&fbclid=iwar2ipcqh8tqoyocdb2ryt-rqf2slmyf3s4k5_qwonmipan9_nqc_wiuabhi",
+            "10.1007/s13592-019-00684-x",
+        ),
     ]
     for link, expected in test_parameters:
         if expected is None:
             assert find_doi(link) is None
         else:
             assert find_doi(link) == expected
+
+
+def test_encode_id() -> None:
+    assert (
+        encode_id("10.1056/nejmoa2119451")
+        == encode_id("10.1056/NEJMOA2119451")
+        == "945f1f30b11bcae6"
+    )
 
 
 def test_format_bibtex_badkey():
@@ -249,6 +293,49 @@ class TestGSearch(IsolatedAsyncioTestCase):
             year="2021",
         )
 
+    async def test_no_doi_doesnt_crash_us(self) -> None:
+        await paperscraper.a_gsearch_papers(
+            "Letters to the American People, Part II (2019–2024)",  # noqa: RUF001
+            year="2024",
+        )
+
+
+@pytest.mark.parametrize(
+    ("title", "scraper_should_succeed"),
+    [(
+        "Simulation Intelligence: Towards a New Generation of Scientific Methods",
+        "arxiv",
+    )],
+)
+@pytest.mark.asyncio()
+async def test_gsearch_examples(title, scraper_should_succeed):
+    result = None
+
+    async def status_callback(paper_title, scrape_result):
+        # make sure most of words agree when lower
+        t1 = set(title.lower().split())
+        t2 = set(paper_title.lower().split())
+        assert len(t1.intersection(t2)) / len(t1) > 0.5
+        nonlocal result
+        result = scrape_result
+
+    scraper = paperscraper.default_scraper(callback=status_callback)
+
+    # remove other scrapers
+    for s in scraper.scrapers:
+        if s.name != scraper_should_succeed:
+            scraper.deregister_scraper(s.name)
+
+    papers = await paperscraper.a_gsearch_papers(title, limit=1, scraper=scraper)
+    assert len(papers) >= 1
+    if result:
+        assert scraper_should_succeed in result, "Scraper specified did not run"
+        assert (
+            result[scraper_should_succeed] == "success"
+        ), f"Scraper {scraper_should_succeed} failed"
+    else:
+        raise AssertionError("No result from callback")
+
 
 class Test1(IsolatedAsyncioTestCase):
     async def test_arxiv_to_pdf(self):
@@ -281,15 +368,23 @@ class Test1(IsolatedAsyncioTestCase):
         assert paperscraper.check_pdf(path)
         os.remove(path)
 
-    async def test_pmc_to_pdf(self):
-        pmc_id = "8971931"
-        path = "test.pdf"
-        async with ThrottledClientSession(
-            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
-        ) as session:
-            await paperscraper.pmc_to_pdf(pmc_id, path, session)
-        assert paperscraper.check_pdf(path)
-        os.remove(path)
+    async def test_pmc_to_pdf(self) -> None:
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            for _ in range(3):  # Retrying on 403, pulling different header each retry
+                async with ThrottledClientSession(
+                    headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
+                ) as session:
+                    cause_exc: Exception | None = None
+                    try:
+                        await paperscraper.pmc_to_pdf("8971931", tmpfile.name, session)
+                    except RuntimeError as exc:
+                        cause_exc = exc
+                    else:
+                        if paperscraper.check_pdf(tmpfile.name):
+                            return
+        raise AssertionError(
+            "Failed to download and check PDF from PMC."
+        ) from cause_exc
 
     def test_search_pdf_link(self) -> None:
         for url, expected in (
@@ -342,7 +437,7 @@ class Test1(IsolatedAsyncioTestCase):
             yield mock_response
 
         mock_session.get.side_effect = mock_session_get
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.NamedTemporaryFile() as tmpfile:
             await openaccess_scraper(
                 {
                     "openAccessPdf": {
@@ -351,18 +446,29 @@ class Test1(IsolatedAsyncioTestCase):
                         )
                     }
                 },
-                os.path.join(tmpdir, "test.pdf"),
+                tmpfile.name,
                 mock_session,
             )
 
-    async def test_pubmed_to_pdf(self):
-        path = "test.pdf"
-        async with ThrottledClientSession(
-            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
-        ) as session:
-            await paperscraper.pubmed_to_pdf("27525504", path, session)
-        assert paperscraper.check_pdf(path)
-        os.remove(path)
+    async def test_pubmed_to_pdf(self) -> None:
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            for _ in range(3):  # Retrying on 403, pulling different header each retry
+                async with ThrottledClientSession(
+                    headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
+                ) as session:
+                    cause_exc: Exception | None = None
+                    try:
+                        await paperscraper.pubmed_to_pdf(
+                            "27525504", tmpfile.name, session
+                        )
+                    except RuntimeError as exc:
+                        cause_exc = exc
+                    else:
+                        if paperscraper.check_pdf(tmpfile.name):
+                            return
+        raise AssertionError(
+            "Failed to download and check PDF from PubMed ID."
+        ) from cause_exc
 
     async def test_link_to_pdf(self):
         link = "https://www.aclweb.org/anthology/N18-3011.pdf"
@@ -387,25 +493,37 @@ class Test1(IsolatedAsyncioTestCase):
         except (RuntimeError, aiohttp.ClientResponseError) as e:
             assert "403" in str(e)  # noqa: PT017
 
-    async def test_link3_to_pdf(self):
-        link = "https://www.medrxiv.org/content/medrxiv/early/2020/03/23/2020.03.20.20040055.full.pdf"
-        path = "test.pdf"
-        async with ThrottledClientSession(
-            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
-        ) as session:
-            await paperscraper.link_to_pdf(link, path, session)
-        assert paperscraper.check_pdf(path)
-        os.remove(path)
+    async def test_link3_to_pdf(self) -> None:
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            for _ in range(3):  # Retrying
+                async with ThrottledClientSession(
+                    headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
+                ) as session:
+                    await paperscraper.link_to_pdf(
+                        "https://www.medrxiv.org/content/medrxiv/early/2020/03/23/2020.03.20.20040055.full.pdf",
+                        tmpfile.name,
+                        session,
+                    )
+                    if paperscraper.check_pdf(tmpfile.name):
+                        return
+        raise AssertionError("Failed to download and check PDF from medRxiv.")
 
-    async def test_chemrxivlink_to_pdf(self):
-        link = "https://doi.org/10.26434/chemrxiv-2023-fw8n4"
-        path = "test.pdf"
-        async with ThrottledClientSession(
-            headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
-        ) as session:
-            await paperscraper.link_to_pdf(link, path, session)
-        assert paperscraper.check_pdf(path)
-        os.remove(path)
+    async def test_chemrxivlink_to_pdf(self) -> None:
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            async with ThrottledClientSession(
+                headers=get_header(), rate_limit=RateLimits.FALLBACK_SLOW.value
+            ) as session:
+                for _ in range(3):  # Retrying if invalid PDF download or 403 error
+                    with contextlib.suppress(ClientResponseError):  # 403 error
+                        await paperscraper.link_to_pdf(
+                            "https://doi.org/10.26434/chemrxiv-2023-fw8n4",
+                            tmpfile.name,
+                            session,
+                        )
+                        if paperscraper.check_pdf(tmpfile.name):
+                            return
+                        # Download completed but PDF is invalid
+        raise AssertionError("Failed to download and check PDF from ChemRxiv.")
 
 
 class Test2(IsolatedAsyncioTestCase):
@@ -451,7 +569,7 @@ class Test6(IsolatedAsyncioTestCase):
         assert len(papers) >= 1
 
 
-class Test7(IsolatedAsyncioTestCase):
+class TestScraper(IsolatedAsyncioTestCase):
     async def test_custom_scraper(self) -> None:
         query = "covid vaccination"
         mock_scrape_fn = MagicMock()
@@ -468,28 +586,85 @@ class Test7(IsolatedAsyncioTestCase):
                 exc.__cause__.status == 400  # type: ignore[union-attr]
             ), "Expected we should exhaust the search"
 
-
-class Test8(IsolatedAsyncioTestCase):
-    async def test_scraper_length(self):
-        # make sure default scraper doesn't duplicate scrapers
-        scraper = paperscraper.default_scraper()
-        assert len(scraper.scrapers) == sum([len(s) for s in scraper.sorted_scrapers])
-
-
-class Test9(IsolatedAsyncioTestCase):
-    async def test_scraper_callback(self):
+    async def test_scraper_callback(self) -> None:
         # make sure default scraper doesn't duplicate scrapers
         scraper = paperscraper.default_scraper()
 
         async def callback(paper, result):  # noqa: ARG001
             assert len(result) > 5
-            print(result)
 
         scraper.callback = callback
         papers = await paperscraper.a_search_papers(  # noqa: F841
             "test", limit=1, scraper=scraper
         )
         await scraper.close()
+
+    def test_scrape_default_timeout(self) -> None:
+        os.environ.pop("PAPERSCRAPER_SCRAPE_FUNCTION_TIMEOUT", None)
+        assert paperscraper.Scraper.SCRAPE_FUNCTION_TIMEOUT == 60.0
+
+    async def test_scraper_timeout(self) -> None:
+        os.environ.pop("PAPERSCRAPER_SCRAPE_FUNCTION_TIMEOUT", None)
+        os.environ["USE_IN_MEMORY_CACHE"] = "true"
+        scraper = paperscraper.Scraper()
+        scraper.register_scraper(
+            openaccess_scraper, attach_session=True, rate_limit=RateLimits.SCRAPER.value
+        )
+        tic = time.perf_counter()
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            assert not await scraper.scrape(
+                {
+                    "title": (
+                        "Martini 3: a general purpose force field for coarse-grained"
+                        " molecular dynamics"
+                    ),
+                    "externalIds": {"DOI": "10.1038/s41592-021-01098-3"},
+                    "openAccessPdf": {
+                        # NOTE: swapped actual for non-routable IP address to avoid CI flakiness
+                        "url": "https://10.255.255.1/test.pdf"
+                    },
+                },
+                tmpfile.name,
+            ), "Scrape was supposed to time out"
+        assert (
+            55.0 < time.perf_counter() - tic < 65.0
+        ), "Expected test to be about 1-min"
+
+    async def test_parser_runtime_error_doesnt_crash_us(self) -> None:
+        mock_scraper = AsyncMock(name="stub", side_effect=[True])
+        scraper = paperscraper.Scraper()
+        scraper.register_scraper(mock_scraper, name="stub", check=False)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            async with ThrottledClientSession(
+                rate_limit=RateLimits.GOOGLE_SCHOLAR.value
+            ) as session:
+                assert not await scraper.batch_scrape(
+                    papers=[{
+                        "title": (
+                            "An essential role of active site arginine residue in"
+                            " iodide binding and histidine residue in electron"
+                            " transfer for iodide oxidation by horseradish"
+                            " peroxidase"
+                        ),
+                        "inline_links": {
+                            "serpapi_cite_link": "https://serpapi.com/search.json?engine=google_scholar_cite&hl=en&q=uWOXVY5eGm8J",
+                        },
+                        "externalIds": {"DOI": "10.1023/A:1007154515475"},
+                        "paperId": "stub",
+                    }],
+                    paper_file_dump_dir=tmpdir,
+                    paper_parser=partial(
+                        parse_google_scholar_metadata, session=session
+                    ),
+                ), "Expected empty return because this test checks for parser failure"
+        mock_scraper.assert_awaited_once()
+
+
+class Test8(IsolatedAsyncioTestCase):
+    async def test_scraper_length(self):
+        # make sure default scraper doesn't duplicate scrapers
+        scraper = paperscraper.default_scraper()
+        assert len(scraper.scrapers) == sum([len(s) for s in scraper.sorted_scrapers])
 
 
 class Test10(IsolatedAsyncioTestCase):
@@ -505,10 +680,13 @@ class Test10(IsolatedAsyncioTestCase):
 
 class Test11(IsolatedAsyncioTestCase):
     async def test_scraper_doi_search(self):
-        papers = await paperscraper.a_search_papers(
-            "10.1016/j.ccell.2021.11.002", limit=1, search_type="doi"
-        )
-        assert len(papers) == 1
+        for _ in range(3):  # Retrying upon unsuccessful scrape
+            papers = await paperscraper.a_search_papers(
+                "10.1016/j.ccell.2021.11.002", limit=1, search_type="doi"
+            )
+            if len(papers) >= 1:
+                return
+        raise AssertionError("Failed to acquire a paper from DOI search.")
 
 
 class Test12(IsolatedAsyncioTestCase):
@@ -642,3 +820,27 @@ class Test16(IsolatedAsyncioTestCase):
         # Check callers can intuit this conversion's failure
         with contextlib.suppress(CitationConversionError):
             format_bibtex(bibtex6, key, clean=False)
+
+        # This BibTeX apparent has a trailing slash in its title
+        bibtex7 = r"""
+        @article{Jain2014Antioxidant,
+            title={Antioxidant and Antibacterial Activities of Spondias pinnata Kurz. Leaves\},
+            volume={4},
+            ISSN={2231-0894},
+            url={http://dx.doi.org/10.9734/ejmp/2014/7048},
+            DOI={10.9734/ejmp/2014/7048},
+            number={2},
+            journal={European Journal of Medicinal Plants},
+            publisher={Sciencedomain International},
+            author={Jain, Preeti},
+            year={2014},
+            month=jan,
+            pages={183–195}
+        }
+        """  # noqa: RUF001
+        assert (
+            "Antioxidant and Antibacterial Activities of Spondias pinnata"
+            in format_bibtex(
+                bibtex7, key=bibtex7.split("{")[1].split(",")[0], clean=False
+            )
+        )

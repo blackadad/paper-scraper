@@ -10,7 +10,7 @@ import time
 import urllib.parse
 from collections.abc import Collection
 from logging import Logger
-from typing import cast
+from typing import Literal, TypeVar, cast, overload
 from uuid import UUID
 
 import aiohttp
@@ -65,6 +65,10 @@ class ThrottledClientSession(aiohttp.ClientSession):
     async def close(self) -> None:
         """Close rate-limiter's "bucket filler" task."""
         if self._fillerTask is not None:
+            # There exists an edge case where an empty session gets closed
+            # before the filler task even starts. In this edge case, we employ
+            # a small asyncio sleep to give a chance to start the filler task.
+            await asyncio.sleep(delay=1e-3)
             self._fillerTask.cancel()
             await asyncio.wait_for(self._fillerTask, timeout=self.MAX_WAIT_FOR_CLOSE)
         await super().close()
@@ -107,7 +111,7 @@ class ThrottledClientSession(aiohttp.ClientSession):
             await self._queue.get()
             self._queue.task_done()
 
-    SERVICE_LIMIT_REACHED_STATUS_CODES: Collection[int] = {429, 503, 504}
+    SERVICE_LIMIT_REACHED_STATUS_CODES: Collection[int] = {429, 503}
 
     async def _request(self, *args, **kwargs) -> aiohttp.ClientResponse:
         for retry_num in range(self._retry_count + 1):
@@ -154,16 +158,22 @@ def check_pdf(path: str | os.PathLike, verbose: bool | Logger = False) -> bool:
 
 
 # SEE: https://www.crossref.org/blog/dois-and-matching-regular-expressions/
-# Test cases: https://regex101.com/r/xtI5bS/7
-pattern = r"10.\d{4,9}(?:[\/\.][a-z-().]*(?:.[\d]+[-<>;():\w]*)+)+"
+# Test cases: https://regex101.com/r/xtI5bS/10
+pattern = r"\/(10.\d{4,9}(?:[\/\.][a-z-().]*(?:[-<>()\/;:\w]*\d+[-<>();:\w]*)+)+)"
 compiled_pattern = re.compile(pattern, re.IGNORECASE)
 
 
-def find_doi(text: str) -> str | None:
+@overload
+def find_doi(text: str, disallow_no_match: Literal[True]) -> str: ...
+@overload
+def find_doi(text: str, disallow_no_match: Literal[False] = False) -> str | None: ...
+def find_doi(text: str, disallow_no_match: bool = False) -> str | None:
     match = compiled_pattern.search(urllib.parse.unquote(text))
     if not match:
+        if disallow_no_match:
+            raise ValueError(f"Failed to find DOI in {text!r}.")
         return None
-    return match.group()
+    return match.group(1)
 
 
 def encode_id(value: str | bytes | UUID, maxsize: int | None = 16) -> str:
@@ -171,7 +181,7 @@ def encode_id(value: str | bytes | UUID, maxsize: int | None = 16) -> str:
     if isinstance(value, UUID):
         value = str(value)
     if isinstance(value, str):
-        value = value.encode()
+        value = value.lower().encode()
     return hashlib.md5(value).hexdigest()[:maxsize]  # noqa: S324
 
 
@@ -197,3 +207,17 @@ def search_pdf_link(text: str, epdf: bool = False) -> str:
         if pdf_link:
             return pdf_link.group(1)
     raise NoPDFLinkError("No PDF link found.")
+
+
+def crossref_headers():
+    """Crossref API key if available, otherwise nothing."""
+    if api_key := os.environ.get("CROSSREF_API_KEY"):
+        return {"Crossref-Plus-API-Token": f"Bearer {api_key}"}
+    return {}
+
+
+T = TypeVar("T")
+
+
+async def aidentity_fn(x: T) -> T:
+    return x

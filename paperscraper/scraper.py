@@ -5,10 +5,10 @@ import logging
 import os
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from .headers import get_header
-from .utils import ThrottledClientSession, check_pdf
+from .utils import ThrottledClientSession, aidentity_fn, check_pdf
 
 
 @dataclass
@@ -51,14 +51,32 @@ class Scraper:
         # sort scrapers by priority
         self.scrapers.sort(key=lambda x: x.priority, reverse=True)
         # reshape into sorted scrapers
+        self._build_sorted_scrapers()
+
+    try:
+        SCRAPE_FUNCTION_TIMEOUT: ClassVar[float | None] = float(  # sec
+            os.environ.get("PAPERSCRAPER_SCRAPE_FUNCTION_TIMEOUT", "60")
+        )
+    except ValueError:  # Defeat by setting to "None"
+        SCRAPE_FUNCTION_TIMEOUT = None
+
+    def _build_sorted_scrapers(self) -> None:
         self.sorted_scrapers = [
             [s for s in self.scrapers if s.priority == priority]
             for priority in sorted({s.priority for s in self.scrapers})
         ]
 
+    def deregister_scraper(self, name: str) -> None:
+        """Remove a scraper by name."""
+        for i, scraper in enumerate(self.scrapers):
+            if scraper.name == name:
+                self.scrapers.pop(i)
+                break
+        self._build_sorted_scrapers()
+
     async def scrape(
         self,
-        paper,
+        paper: dict[str, Any],
         path: str | os.PathLike,
         i: int = 0,
         logger: logging.Logger | None = None,
@@ -79,7 +97,10 @@ class Scraper:
             for j in range(len(scrapers)):
                 scraper = scrapers[(i + j) % len(scrapers)]
                 try:
-                    result = await scraper.function(paper, path, **scraper.kwargs)
+                    result = await asyncio.wait_for(
+                        scraper.function(paper, path, **scraper.kwargs),
+                        timeout=self.SCRAPE_FUNCTION_TIMEOUT,
+                    )
                     if result and (
                         not scraper.check_pdf or check_pdf(path, logger or False)
                     ):
@@ -107,9 +128,10 @@ class Scraper:
         self,
         papers: Sequence[dict[str, Any]],
         paper_file_dump_dir: str | os.PathLike,
-        paper_parser: (
-            Callable[[dict[str, Any]], Awaitable[dict[str, Any]]] | None
-        ) = None,
+        paper_preprocessor: Callable[[Any], Awaitable[dict[str, Any]]] = aidentity_fn,
+        paper_parser: Callable[
+            [dict[str, Any]], Awaitable[dict[str, Any]]
+        ] = aidentity_fn,
         batch_size: int = 10,
         limit: int | None = None,
         logger: logging.Logger | None = None,
@@ -120,7 +142,9 @@ class Scraper:
         Args:
             papers: List of raw paper metadata.
             paper_file_dump_dir: Directory where papers will be downloaded.
-            paper_parser: Optional function to process the raw paper metadata
+            paper_preprocessor: Optional async function to process the raw paper
+                metadata before scraping.
+            paper_parser: Optional async function to process the raw paper metadata
                 after scraping.
             batch_size: Batch size to use when scraping, within a batch
                 scraping is parallelized.
@@ -130,19 +154,29 @@ class Scraper:
         Returns:
             Dictionary mapping path to downloaded paper to parsed metadata.
         """
-        if paper_parser is not None:
-            parser = paper_parser
-        else:
-
-            async def parser(paper: dict[str, Any]) -> dict[str, Any]:
-                return paper
 
         async def scrape_parse(
             paper: dict[str, Any], i: int
         ) -> tuple[str, dict[str, Any]] | Literal[False]:
+            try:
+                paper = await paper_preprocessor(paper)
+            except RuntimeError:  # Failed to hydrate the required paperId
+                if logger is not None:
+                    logger.exception(f"Failed to preprocess paper {paper}.")
+                return False
             path = os.path.join(paper_file_dump_dir, f'{paper["paperId"]}.pdf')
             success = await self.scrape(paper, path, i=i, logger=logger)
-            return (path, await parser(paper)) if success else False
+            try:
+                return (path, await paper_parser(paper)) if success else False
+            except RuntimeError:
+                # RuntimeError: failed to traverse link inside paper details,
+                # or paper is missing field required for parsing like BibTeX links
+                if logger is not None:
+                    logger.exception(
+                        f"Failed to parse paper titled {paper.get('title')!r} with key"
+                        f" {paper.get('paperId')!r}."
+                    )
+                return False
 
         aggregated: dict[str, dict[str, Any]] = {}
         for i in range(0, len(papers), batch_size):

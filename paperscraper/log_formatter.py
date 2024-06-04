@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import logging
+from typing import ClassVar
 
 
 class CustomFormatter(logging.Formatter):
@@ -12,7 +15,7 @@ class CustomFormatter(logging.Formatter):
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
     )
 
-    FORMATS = {  # noqa: RUF012
+    FORMATS: ClassVar[dict[int, str]] = {
         logging.DEBUG: grey + format_str + reset,
         logging.INFO: grey + format_str + reset,
         logging.WARNING: yellow + format_str + reset,
